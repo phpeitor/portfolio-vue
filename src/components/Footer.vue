@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import Social from "./Social.vue";
 import Link from "./Link.vue";
 import Clickable from "./Clickable.vue";
 import NotchSection from "./NotchSection.vue";
+import Modal from "./Modal.vue";
 import { t } from "../i18n/utils/translate";
 import { locale } from "../i18n/store";
 import ButtonRound from "./ButtonRound.vue";
 import { lenis } from "../composables/useScroll";
 import ArrowRightLong from "./icons/ArrowRightLong.vue";
+import * as legalEn from "../content/legal/en";
+import * as legalEs from "../content/legal/es";
 
 interface Props {
   withSocial?: boolean;
@@ -19,6 +23,21 @@ const handleBackToTop = () => {
 };
 
 const { withSocial = true } = defineProps<Props>();
+
+type LegalDoc = "privacy" | "legal";
+
+const activeModal = ref<LegalDoc | null>(null);
+
+const legalContent = computed(() => (locale.value === "es" ? legalEs : legalEn));
+const activeModalContent = computed(() => (activeModal.value ? legalContent.value[activeModal.value] : ""));
+
+const openModal = (doc: LegalDoc) => {
+  activeModal.value = doc;
+};
+
+const closeModal = () => {
+  activeModal.value = null;
+};
 </script>
 
 <template>
@@ -41,28 +60,24 @@ const { withSocial = true } = defineProps<Props>();
         <Social v-if="withSocial" />
         <div class="footer-top-links">
           <div class="footer-top-links-legal">
-            <Clickable renderAs="div">
-              <Link
-                :href="locale === 'es' ? '/es/privacy.html' : '/privacy.html'"
-                class="footer-link"
-                :external="true"
-                data-cursor="circle-white"
-                data-sound="click"
-                data-hoversound="hover"
-                >{{ t("privacy") }}</Link
-              >
-            </Clickable>
-            <Clickable renderAs="div">
-              <Link
-                :href="locale === 'es' ? '/es/legal.html' : '/legal.html'"
-                class="footer-link children-unclickable"
-                :external="true"
-                data-cursor="circle-white"
-                data-sound="click"
-                data-hoversound="hover"
-                >{{ t("legal") }}</Link
-              >
-            </Clickable>
+            <Clickable
+              renderAs="button"
+              class="footer-link"
+              @click="openModal('privacy')"
+              data-cursor="circle-white"
+              data-sound="click"
+              data-hoversound="hover"
+              >{{ t("privacy") }}</Clickable
+            >
+            <Clickable
+              renderAs="button"
+              class="footer-link"
+              @click="openModal('legal')"
+              data-cursor="circle-white"
+              data-sound="click"
+              data-hoversound="hover"
+              >{{ t("legal") }}</Clickable
+            >
           </div>
         </div>
       </div>
@@ -91,6 +106,9 @@ const { withSocial = true } = defineProps<Props>();
               >PHPeitor</Link> </p>
       </div>
     </div>
+    <Modal v-if="activeModal" :title="t(activeModal)" @close="closeModal">
+      <div v-html="activeModalContent"></div>
+    </Modal>
   </footer>
 </template>
 
