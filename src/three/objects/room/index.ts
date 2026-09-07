@@ -10,6 +10,7 @@ import { mouse } from "./mouse";
 import { messagePopup } from "./message-popup";
 import { elephant } from "./elephant";
 import { music } from "./music";
+import { babyElephant } from "./baby-elephant";
 
 import type { Object3D } from "three";
 
@@ -40,6 +41,8 @@ const init = () => {
   if (objects?.elephant) elephant.init(objects.elephant);
 
   if (objects?.music) music.init(objects.music);
+
+  babyElephant.init(objects?.carpet ?? null);
 };
 
 const initObjects = () => {
@@ -105,6 +108,7 @@ const tick = () => {
 
   elephant.tick();
   music.tick();
+  babyElephant.tick();
 };
 
 const destroy = () => {
@@ -116,6 +120,7 @@ const destroy = () => {
   mouse.destroy();
   elephant.destroy();
   music.destroy();
+  babyElephant.destroy();
 };
 
 export const room = { init, destroy, group, chairScrollRotation };
