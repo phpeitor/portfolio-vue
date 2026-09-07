@@ -1,5 +1,5 @@
 import { resources } from "../../../utils/resources";
-import { AnimationMixer, Box3, Group, LoopRepeat, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import { AnimationMixer, Box3, Group, LoopRepeat, Mesh, MeshBasicMaterial, Object3D, Vector3 } from "three";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import gsap from "gsap";
 import { sceneWeights } from "../../../animations/scenes";
@@ -10,6 +10,15 @@ import type { MeshStandardMaterial } from "three";
 let model: Group | null = null;
 let mixer: AnimationMixer | null = null;
 let walkTimeline: gsap.core.Timeline | null = null;
+// The source clip bakes forward locomotion into this bone's own translation (a
+// ~525-unit swing) instead of keeping it in place for a walk-in-place cycle — since
+// we already drive the model's forward motion ourselves via the GSAP timeline below,
+// leaving the clip's translation live doubles the movement, snapping the character
+// across huge distances every frame. Freezing the bone to its rest position after
+// each mixer update cancels that baked-in drift while keeping the leg/spine rotation
+// keyframes (the actual walk cycle) intact.
+let hipBone: Object3D | null = null;
+let hipRestPosition: Vector3 | null = null;
 
 // Builds a short back-and-forth "patrol" across the carpet instead of a one-shot
 // walk: tween the X position between the two edges, flipping to face the direction
@@ -18,16 +27,18 @@ const startWalking = (bounds: { min: number; max: number }, z: number, y: number
   if (!model) return;
 
   const duration = (bounds.max - bounds.min) * 3.5;
+  const turnDuration = 0.4;
 
   walkTimeline = gsap.timeline({ repeat: -1 });
   walkTimeline.set(model.position, { x: bounds.min, y, z });
   walkTimeline.set(model.rotation, { y: Math.PI / 2 });
   walkTimeline.to(model.position, { x: bounds.max, duration, ease: "none" });
-  walkTimeline.set(model.rotation, { y: -Math.PI / 2 });
+  walkTimeline.to(model.rotation, { y: -Math.PI / 2, duration: turnDuration, ease: "power1.inOut" });
   walkTimeline.to(model.position, { x: bounds.min, duration, ease: "none" });
+  walkTimeline.to(model.rotation, { y: Math.PI / 2, duration: turnDuration, ease: "power1.inOut" });
 };
 
-const init = (carpet: Mesh | null) => {
+const init = (carpet: Mesh | null, chair: Mesh | null) => {
   if (model) return;
   const resource = resources.items["baby-elephant-model"];
   if (!resource || !carpet) return;
@@ -81,10 +92,20 @@ const init = (carpet: Mesh | null) => {
   // sprinkling markers across the carpet's Box3 and checking which ones actually
   // landed in the visible open corner (near carpetBox.min.x, carpetBox.max.z — the
   // near-camera foreground edge of the rug) versus the desk-occluded middle.
-  const walkMargin = scaledSize.x / 2 + carpetSize.x * 0.03;
+  // The far edge is clamped to stay clear of the chair (by its own measured bounds,
+  // not a guessed fraction) rather than a fixed carpet fraction — an earlier fixed
+  // 0.22 fraction combined with the near-edge margin left a walkable span *narrower*
+  // than the model's own body, so it flipped direction almost every second instead of
+  // taking real strides — that's what read as "jumping" rather than walking.
+  const nearEdge = carpetBox.min.x + carpetSize.x * 0.04;
+  let farEdge = carpetBox.min.x + carpetSize.x * 0.42;
+  if (chair) {
+    const chairBox = new Box3().setFromObject(chair);
+    farEdge = Math.min(farEdge, chairBox.min.x - scaledSize.x * 0.6);
+  }
   const bounds = {
-    min: carpetBox.min.x + walkMargin,
-    max: carpetBox.min.x + carpetSize.x * 0.22,
+    min: nearEdge,
+    max: Math.max(farEdge, nearEdge + scaledSize.x * 2.5),
   };
   const walkZ = carpetBox.max.z - carpetSize.z * 0.12;
   // model.position is still (0,0,0) here, so scaledBox.min.y is exactly how far the
@@ -94,6 +115,9 @@ const init = (carpet: Mesh | null) => {
 
   room.group.add(model);
   startWalking(bounds, walkZ, groundY);
+
+  hipBone = model.getObjectByName("Elephant_Baby:Mesh:Hip") ?? null;
+  hipRestPosition = hipBone ? hipBone.position.clone() : null;
 
   const clip = resource.animations[0];
   if (clip) {
@@ -113,6 +137,7 @@ const tick = () => {
   if (mixer) {
     const delta = gsap.ticker.deltaRatio(60);
     mixer.update(delta / 60);
+    if (hipBone && hipRestPosition) hipBone.position.copy(hipRestPosition);
   }
 };
 
@@ -121,6 +146,8 @@ const destroy = () => {
   walkTimeline = null;
   mixer = null;
   model = null;
+  hipBone = null;
+  hipRestPosition = null;
 };
 
 export const babyElephant = { init, tick, destroy };

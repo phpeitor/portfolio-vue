@@ -42,7 +42,7 @@ const init = () => {
 
   if (objects?.music) music.init(objects.music);
 
-  babyElephant.init(objects?.carpet ?? null);
+  babyElephant.init(objects?.carpet ?? null, objects?.chair ?? null);
 };
 
 const initObjects = () => {
