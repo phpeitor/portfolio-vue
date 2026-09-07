@@ -4,6 +4,7 @@ import elephantModel from "./assets/elephant/demo.glb";
 import labModel from "./assets/models/lab.glb";
 import roomModel from "./assets/models/room.glb";
 import contactModel from "./assets/models/contact.glb";
+import laptopModel from "./assets/glb/laptop.glb";
 
 import contactTexture from "./assets/textures/contact.webp";
 import contactShadowTexture from "./assets/textures/contact-shadow.webp";
@@ -35,6 +36,7 @@ export const sources = [
   { name: "lab-model", type: "gltfModel", path: labModel },
   { name: "room-model", type: "gltfModel", path: roomModel },
   { name: "contact-model", type: "gltfModel", path: contactModel },
+  { name: "laptop-model", type: "gltfModel", path: laptopModel },
 
   //textures
   { name: "contact-texture", type: "texture", path: contactTexture },
