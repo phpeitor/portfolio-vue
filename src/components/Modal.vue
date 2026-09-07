@@ -150,7 +150,16 @@ onUnmounted(() => {
     }
 
     :deep(ul) {
+      list-style: disc;
       padding-left: var(--space-lg);
+    }
+
+    :deep(li) {
+      margin-bottom: var(--space-xxs);
+
+      &::marker {
+        color: var(--color-text-400);
+      }
     }
 
     :deep(a) {
