@@ -17,6 +17,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
+import { createBeard } from "./beard";
 import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
 import { createSiteLogo } from "./site-logo";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
@@ -36,6 +37,10 @@ let glasses: Group | null = null;
 let glassesMaterial: MeshMatcapMaterial | null = null;
 let glassesHologram: Group | null = null;
 let glassesHologramMaterial: ShaderMaterial | null = null;
+let beard: Group | null = null;
+let beardMaterial: MeshMatcapMaterial | null = null;
+let beardHologram: Group | null = null;
+let beardHologramMaterial: ShaderMaterial | null = null;
 let phpLogoHologram: Group | null = null;
 let phpLogoHologramMaterial: ShaderMaterial | null = null;
 let contactLogo: Group | null = null;
@@ -166,6 +171,7 @@ const setupMesh = () => {
   const avatarSize = attachPhpLogo();
   if (avatarSize) {
     attachGlasses(avatarSize);
+    attachBeard(avatarSize);
     attachContactLogo(avatarSize);
   }
 
@@ -262,6 +268,70 @@ const updateGlasses = () => {
   }
 };
 
+const attachBeard = (avatarSize: Vector3) => {
+  if (!mesh || beard) return;
+
+  const headBone = mesh.getObjectByName("headBone") as Bone | null;
+  if (!headBone) return;
+
+  // Same reasoning as attachGlasses: a plain matcap material (not the avatar's
+  // skinning-dependent shader) since this is an unskinned accessory mesh, and
+  // `transparent: true` so it isn't silently painted over by the About-section
+  // vignette plane, which three.js always renders after every opaque mesh
+  // regardless of renderOrder.
+  const matcapTexture = resources.items["matcap-black"];
+  matcapTexture.colorSpace = LinearSRGBColorSpace;
+  matcapTexture.generateMipmaps = false;
+  // Tinted brown (matching the hair) instead of the glasses' plain black — an
+  // untinted black matcap here reads as a grey/metallic blob rather than facial hair.
+  const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x4a2f1e });
+  material.transparent = true;
+
+  beard = createBeard(avatarSize, material);
+  beardMaterial = material;
+  scene.instance.add(beard);
+
+  // Hologram double, same as the glasses': revealed by the additive hologram shader
+  // as the solid copy above dissolves during the about-section scroll transition.
+  beardHologramMaterial = createAccessoryHologramMaterial();
+  beardHologram = createBeard(avatarSize, beardHologramMaterial);
+  scene.instance.add(beardHologram);
+};
+
+const updateBeard = () => {
+  if (!mesh || !beard) return;
+
+  const headBone = mesh.getObjectByName("headBone") as Bone | null;
+  if (!headBone) return;
+
+  const shouldShow = sceneWeights.about > 0.15 || sceneWeights.contact > 0.15;
+  beard.visible = shouldShow;
+  if (beardHologram) beardHologram.visible = shouldShow;
+  if (!shouldShow) return;
+
+  transform.updateMatrixWorld(true);
+  mesh.updateMatrixWorld(true);
+
+  const avatarBox = new Box3().setFromObject(mesh);
+  const avatarSize = new Vector3();
+  avatarBox.getSize(avatarSize);
+
+  // Anchored to the same headBone as the glasses, but nudged up to jaw height
+  // instead of eye height (headBone itself sits low, near the neck) — well below
+  // the glasses' own 0.095 offset so the two don't overlap.
+  headBone.getWorldPosition(beard.position);
+  beard.position.y += avatarSize.y * 0.024;
+  beard.position.z += avatarSize.z * 0.28;
+
+  if (beardMaterial) beardMaterial.opacity = getHologramAlpha(beard.position.y);
+
+  if (beardHologram && beardHologramMaterial) {
+    beardHologram.position.copy(beard.position);
+    beardHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
+    beardHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
+  }
+};
+
 const attachPhpLogo = (): Vector3 | null => {
   if (!mesh || phpLogo) return null;
 
@@ -352,6 +422,7 @@ const tick = () => {
     transform.visible = true;
     updatePhpLogo();
     updateGlasses();
+    updateBeard();
     updateContactLogo();
     return;
   }
@@ -360,6 +431,7 @@ const tick = () => {
   transform.rotation.copy(waypointsRotation);
   updatePhpLogo();
   updateGlasses();
+  updateBeard();
   updateContactLogo();
 
   //uniforms.uProgress.value = sceneWeightsInOut.about.in * 1.1 - 0.1;
@@ -471,6 +543,8 @@ const destroy = () => {
   phpLogoHologram = null;
   glasses = null;
   glassesHologram = null;
+  beard = null;
+  beardHologram = null;
   contactLogo = null;
 };
 
