@@ -1,11 +1,22 @@
 import { resources } from "../../../utils/resources";
-import { Box3, Mesh, Vector3, Euler, Group, ShaderMaterial, LinearSRGBColorSpace, MeshBasicMaterial } from "three";
+import {
+  Box3,
+  Mesh,
+  Vector3,
+  Euler,
+  Group,
+  ShaderMaterial,
+  LinearSRGBColorSpace,
+  MeshBasicMaterial,
+  MeshMatcapMaterial,
+} from "three";
 import { scene } from "../../core/scene";
 import { animations } from "./animations";
 import { sceneWeights, sceneWeightsInOut } from "../../../animations/scenes";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
+import { createGlasses } from "./glasses";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
 import matcapFragmentShader from "../../shaders/avatar-matcap/fragment.glsl";
 import headVertexShader from "../../shaders/avatar-head/vertex.glsl";
@@ -122,6 +133,7 @@ const setupMesh = () => {
     mesh.remove(brain);
   }
 
+  attachGlasses();
   attachPhpLogo();
 
   mesh.rotation.z = 0;
@@ -131,6 +143,26 @@ const setupMesh = () => {
   rightHandBone = mesh.getObjectByName("bone-right-hand") as Bone;
 
   scene.instance.add(transform);
+};
+
+const attachGlasses = () => {
+  if (!mesh) return;
+
+  const faceMesh = mesh.getObjectByName("face") as Mesh | null;
+  if (!faceMesh) return;
+
+  faceMesh.geometry.computeBoundingBox();
+  const box = faceMesh.geometry.boundingBox;
+  if (!box) return;
+
+  // Plain (non-skinned) accessory: use the built-in matcap material instead of the
+  // avatar's custom shader, which hard-requires a SkinnedMesh (boneMatX/skinWeight).
+  const matcapTexture = resources.items["matcap-black"];
+  matcapTexture.colorSpace = LinearSRGBColorSpace;
+  matcapTexture.generateMipmaps = false;
+  const material = new MeshMatcapMaterial({ matcap: matcapTexture });
+
+  mesh.add(createGlasses(box, material));
 };
 
 const attachPhpLogo = () => {
