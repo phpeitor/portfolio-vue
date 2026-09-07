@@ -3,8 +3,8 @@ import { Group, Mesh, TorusGeometry, Vector3 } from "three";
 import type { Material } from "three";
 
 // Builds a small, subtle smile — a short arc segment — sized off the whole avatar's
-// world-space bounding box. Mirrors createGlasses/createBeard: children sit at local
-// (0,0,0) so the returned group only needs its position set once (see attachMouth in
+// world-space bounding box. Mirrors createGlasses: children sit at local (0,0,0) so
+// the returned group only needs its position set once (see attachMouth in
 // avatar/index.ts, parented directly onto headBone) to track the head bone.
 export const createMouth = (avatarSize: Vector3, material: Material): Group => {
   const group = new Group();

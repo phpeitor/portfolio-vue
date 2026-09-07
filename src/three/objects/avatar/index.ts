@@ -19,7 +19,6 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
-import { createBeard } from "./beard";
 import { createMouth } from "./mouth";
 import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
 import { createSiteLogo } from "./site-logo";
@@ -40,10 +39,6 @@ let glasses: Group | null = null;
 let glassesMaterial: MeshMatcapMaterial | null = null;
 let glassesHologram: Group | null = null;
 let glassesHologramMaterial: ShaderMaterial | null = null;
-let beard: Group | null = null;
-let beardMaterial: MeshMatcapMaterial | null = null;
-let beardHologram: Group | null = null;
-let beardHologramMaterial: ShaderMaterial | null = null;
 let mouth: Group | null = null;
 let mouthMaterial: MeshMatcapMaterial | null = null;
 let mouthHologram: Group | null = null;
@@ -91,7 +86,7 @@ const getHologramAlpha = (worldY: number) => {
 // the old way while the actual head has turned — the accessory drifts off the face.
 // Parenting onto headBone with a local-space offset computed once, by contrast,
 // tracks the bone rigidly forever after, the same way the skinned face/eyes do.
-// Face accessories (glasses/beard/mouth) need an offset scaled to the HEAD, not the
+// Face accessories (glasses/mouth) need an offset scaled to the HEAD, not the
 // whole body — using avatarSize (the full-body Box3 already computed for the chest
 // logos) put them roughly 3 head-heights away from headBone's origin. That was hard
 // to notice in the About pose specifically because headBone's rotation there is very
@@ -218,7 +213,6 @@ const setupMesh = () => {
 
   if (avatarSize) {
     attachGlasses(avatarSize);
-    attachBeard(avatarSize);
     attachMouth(avatarSize);
     attachContactLogo(avatarSize);
   }
@@ -307,60 +301,6 @@ const updateGlasses = () => {
   }
 };
 
-const attachBeard = (avatarSize: Vector3) => {
-  if (!mesh || beard) return;
-
-  const headBone = mesh.getObjectByName("headBone") as Bone | null;
-  if (!headBone) return;
-
-  // Same reasoning as attachGlasses: a plain matcap material (not the avatar's
-  // skinning-dependent shader) since this is an unskinned accessory mesh, and
-  // `transparent: true` so it isn't silently painted over by the About-section
-  // vignette plane, which three.js always renders after every opaque mesh
-  // regardless of renderOrder.
-  const matcapTexture = resources.items["matcap-black"];
-  matcapTexture.colorSpace = LinearSRGBColorSpace;
-  matcapTexture.generateMipmaps = false;
-  // Tinted brown (matching the hair) instead of the glasses' plain black — an
-  // untinted black matcap here reads as a grey/metallic blob rather than facial hair.
-  const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x4a2f1e });
-  material.transparent = true;
-  // See attachGlasses — drawn as a "decal" on top of the head regardless of depth.
-  material.depthTest = false;
-  material.depthWrite = false;
-
-  beard = createBeard(avatarSize, material);
-  beardMaterial = material;
-  // Same headBone-local parenting as the glasses — position set later, see
-  // positionFaceAccessories.
-  headBone.add(beard);
-
-  // Hologram double, same as the glasses': revealed by the additive hologram shader
-  // as the solid copy above dissolves during the about-section scroll transition.
-  beardHologramMaterial = createAccessoryHologramMaterial();
-  beardHologram = createBeard(avatarSize, beardHologramMaterial);
-  headBone.add(beardHologram);
-};
-
-const updateBeard = () => {
-  if (!beard) return;
-
-  const shouldShow = sceneWeights.about > 0.15 || sceneWeights.contact > 0.15;
-  beard.visible = shouldShow;
-  if (beardHologram) beardHologram.visible = shouldShow;
-  if (!shouldShow) return;
-
-  if (beardMaterial) {
-    beard.getWorldPosition(worldPositionScratch);
-    beardMaterial.opacity = getHologramAlpha(worldPositionScratch.y);
-  }
-
-  if (beardHologramMaterial) {
-    beardHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
-    beardHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
-  }
-};
-
 const attachMouth = (avatarSize: Vector3) => {
   if (!mesh || mouth) return;
 
@@ -370,8 +310,7 @@ const attachMouth = (avatarSize: Vector3) => {
   const matcapTexture = resources.items["matcap-black"];
   matcapTexture.colorSpace = LinearSRGBColorSpace;
   matcapTexture.generateMipmaps = false;
-  // A muted brownish-red ("lips") rather than the beard's brown, so the two read as
-  // distinct features instead of blurring into one shape.
+  // A muted brownish-red ("lips") for a distinct facial feature.
   const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x6b3535 });
   material.transparent = true;
   // See attachGlasses — drawn as a "decal" on top of the head regardless of depth.
@@ -380,7 +319,7 @@ const attachMouth = (avatarSize: Vector3) => {
 
   mouth = createMouth(avatarSize, material);
   mouthMaterial = material;
-  // Same headBone-local parenting as the glasses/beard — position set later, see
+  // Same headBone-local parenting as the glasses — position set later, see
   // positionFaceAccessories.
   headBone.add(mouth);
 
@@ -417,16 +356,16 @@ const buildCalibrationHead = (): { headBone: Bone; mesh: Object3D } | null => {
 
 let faceAccessoriesPositioned = false;
 
-// glasses/beard/mouth are parented onto headBone in attachGlasses/attachBeard/
-// attachMouth (during setupMesh), but their local offset is computed here instead —
-// against buildCalibrationHead's isolated, deterministic pose rather than the live
+// glasses/mouth are parented onto headBone in attachGlasses/attachMouth (during
+// setupMesh), but their local offset is computed here instead — against
+// buildCalibrationHead's isolated, deterministic pose rather than the live
 // mesh/mixer, and so no longer timing-dependent at all. A *local* offset, once
 // computed, is valid regardless of which posed instance of the rig it's measured
 // against (that's the whole point of local space) — so calibrating against a
 // throwaway clone and applying the result to the live headBone is exactly correct,
 // not an approximation.
 const positionFaceAccessories = () => {
-  if (faceAccessoriesPositioned || !glasses || !beard || !mouth) return;
+  if (faceAccessoriesPositioned || !glasses || !mouth) return;
 
   const calibration = buildCalibrationHead();
   if (!calibration) return;
@@ -442,11 +381,6 @@ const positionFaceAccessories = () => {
     worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.2, headSize.z * 0.3)),
   );
   glassesHologram?.position.copy(glasses.position);
-
-  beard.position.copy(
-    worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * -0.04, headSize.z * 0.16)),
-  );
-  beardHologram?.position.copy(beard.position);
 
   mouth.position.copy(
     worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.05, headSize.z * 0.27)),
@@ -578,7 +512,6 @@ const tick = () => {
     transform.visible = true;
     updatePhpLogo();
     updateGlasses();
-    updateBeard();
     updateMouth();
     updateContactLogo();
     return;
@@ -588,7 +521,6 @@ const tick = () => {
   transform.rotation.copy(waypointsRotation);
   updatePhpLogo();
   updateGlasses();
-  updateBeard();
   updateMouth();
   updateContactLogo();
 
@@ -699,8 +631,6 @@ const destroy = () => {
   phpLogoHologram = null;
   glasses = null;
   glassesHologram = null;
-  beard = null;
-  beardHologram = null;
   mouth = null;
   mouthHologram = null;
   contactLogo = null;

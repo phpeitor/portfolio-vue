@@ -1,5 +1,6 @@
 import { resources } from "../../../utils/resources";
 import { AnimationMixer, Box3, Group, LoopRepeat, Mesh, MeshBasicMaterial, Vector3 } from "three";
+import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import gsap from "gsap";
 import { sceneWeights } from "../../../animations/scenes";
 import { room } from ".";
@@ -31,7 +32,13 @@ const init = (carpet: Mesh | null) => {
   const resource = resources.items["baby-elephant-model"];
   if (!resource || !carpet) return;
 
-  model = resource.scene.clone(true) as Group;
+  // A rigged/skinned model (has bones + a walk-cycle animation) — a plain
+  // .clone(true) copies the mesh hierarchy but not the skeleton/bone bindings
+  // correctly, leaving the SkinnedMesh's skinning tied to the ORIGINAL (unrendered)
+  // bones instead of the new clone's, which silently renders it invisible/nowhere
+  // useful regardless of the wrapper Group's own position. Same fix already used for
+  // the avatar's own rig in three/objects/avatar/index.ts.
+  model = cloneSkeleton(resource.scene) as Group;
   model.name = "baby-elephant";
 
   // No lights anywhere in this scene (everything else here is unlit/matcap for the
@@ -69,22 +76,24 @@ const init = (carpet: Mesh | null) => {
   const scaledSize = new Vector3();
   scaledBox.getSize(scaledSize);
 
-  const walkMargin = carpetSize.x * 0.18 + scaledSize.x / 2;
+  // The desk/chair sit roughly mid-carpet in Z, so a walk at carpetCenter.z (or the
+  // carpet's own X center) stays permanently tucked behind/under them — confirmed by
+  // sprinkling markers across the carpet's Box3 and checking which ones actually
+  // landed in the visible open corner (near carpetBox.min.x, carpetBox.max.z — the
+  // near-camera foreground edge of the rug) versus the desk-occluded middle.
+  const walkMargin = scaledSize.x / 2 + carpetSize.x * 0.03;
   const bounds = {
-    min: carpetCenter.x - carpetSize.x / 2 + walkMargin,
-    max: carpetCenter.x + carpetSize.x / 2 - walkMargin,
+    min: carpetBox.min.x + walkMargin,
+    max: carpetBox.min.x + carpetSize.x * 0.22,
   };
+  const walkZ = carpetBox.max.z - carpetSize.z * 0.12;
   // model.position is still (0,0,0) here, so scaledBox.min.y is exactly how far the
   // model's feet currently sit from local origin — shifting position.y by the gap
   // between that and the carpet's top surface rests the feet exactly on the carpet.
   const groundY = carpetBox.max.y - scaledBox.min.y;
 
   room.group.add(model);
-  startWalking(bounds, carpetCenter.z, groundY);
-  walkTimeline?.pause(0);
-  model.position.set(carpetCenter.x - carpetSize.x * 0.32, groundY, carpetCenter.z - carpetSize.z * 0.28);
-
-  (window as any).__dbgElephant = { model, carpetBox, carpetSize, carpetCenter, groundY };
+  startWalking(bounds, walkZ, groundY);
 
   const clip = resource.animations[0];
   if (clip) {

@@ -27,7 +27,6 @@ parallaxGroup.add(instance);
 const cursor = { x: 0, y: 0 };
 
 const init = () => {
-  (window as any).__dbgCamera = instance;
   threeSizes.on("resize", resize);
   resize();
 
