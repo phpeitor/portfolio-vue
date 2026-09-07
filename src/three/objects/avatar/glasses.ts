@@ -1,56 +1,72 @@
-import { CylinderGeometry, Group, Mesh, TorusGeometry } from "three";
+import { CylinderGeometry, Group, Mesh, TorusGeometry, Vector3 } from "three";
 
-import type { Box3, Material } from "three";
+import type { Material } from "three";
+
+const CYLINDER_UP = new Vector3(0, 1, 0);
+
+// Orients a Y-aligned cylinder mesh along an arbitrary direction, centered between
+// `from` and `from + direction * length`.
+const alignCylinder = (mesh: Mesh, from: Vector3, direction: Vector3, length: number) => {
+  mesh.position.copy(from).addScaledVector(direction, length / 2);
+  mesh.quaternion.setFromUnitVectors(CYLINDER_UP, direction);
+};
 
 const LENS_SEGMENTS = 24;
 const TUBE_SEGMENTS = 10;
 
 const createRing = (radius: number, tube: number, material: Material) => {
   const mesh = new Mesh(new TorusGeometry(radius, tube, TUBE_SEGMENTS, LENS_SEGMENTS), material);
-  // TorusGeometry faces its own local Z by default; rotate it onto local X so it
-  // faces the camera once placed (see axis note below).
-  mesh.rotation.y = Math.PI / 2;
   mesh.frustumCulled = false;
   mesh.renderOrder = 26;
   return mesh;
 };
 
-// Builds a simple round-frame accessory sized from the face sprite's own bounding box,
-// so it stays proportional if that mesh ever changes.
-//
-// Axis note: the avatar armature bakes a Blender (Z-up) -> three.js (Y-up) axis
-// conversion into its own root rotation, so this mesh's *local* axes don't match
-// screen space directly. In local space: left-right = local Y, up-down = -local Z,
-// front/back (toward camera = smaller value) = local X.
-export const createGlasses = (faceBox: Box3, material: Material): Group => {
-  const widthLR = faceBox.max.y - faceBox.min.y;
-  const heightUD = faceBox.max.z - faceBox.min.z;
-  const centerLR = (faceBox.max.y + faceBox.min.y) / 2;
-
-  const lensRadius = widthLR * 0.16;
+// Builds a simple round-frame accessory sized off the whole avatar's world-space
+// bounding box (standard X=left-right, Y=up-down, Z=depth). Children are positioned
+// relative to local (0,0,0) so the returned group only needs its `.position` updated
+// each frame (see updateGlasses in avatar/index.ts) to track the head bone.
+export const createGlasses = (avatarSize: Vector3, material: Material): Group => {
+  const lensRadius = avatarSize.x * 0.028;
   const tube = lensRadius * 0.22;
-  const eyeOffsetLR = widthLR * 0.235;
-  const eyeUD = faceBox.max.z - heightUD * 0.6;
-  const eyeFront = faceBox.min.x - tube * 0.6;
+  const eyeOffsetX = avatarSize.x * 0.05;
 
   const group = new Group();
   group.name = "glasses";
 
   const leftLens = createRing(lensRadius, tube, material);
-  leftLens.position.set(eyeFront, centerLR - eyeOffsetLR, eyeUD);
+  leftLens.position.set(-eyeOffsetX, 0, 0);
   group.add(leftLens);
 
   const rightLens = createRing(lensRadius, tube, material);
-  rightLens.position.set(eyeFront, centerLR + eyeOffsetLR, eyeUD);
+  rightLens.position.set(eyeOffsetX, 0, 0);
   group.add(rightLens);
 
-  const bridgeLength = eyeOffsetLR * 2 - lensRadius * 1.7;
+  const bridgeLength = eyeOffsetX * 2 - lensRadius * 1.7;
   const bridge = new Mesh(new CylinderGeometry(tube, tube, Math.max(bridgeLength, tube), 8), material);
-  // CylinderGeometry's length already runs along local Y (left-right here) — no rotation needed.
-  bridge.position.set(eyeFront, centerLR, eyeUD);
+  bridge.rotation.z = Math.PI / 2;
   bridge.frustumCulled = false;
   bridge.renderOrder = 26;
   group.add(bridge);
+
+  // Temple arms: from the outer rim of each lens, flaring outward and back toward
+  // the ears — angled diagonally rather than running straight back (depth-aligned,
+  // i.e. straight at the camera) so they actually read as a line from this angle
+  // instead of foreshortening down to a dot.
+  const armLength = lensRadius * 2.2;
+  const armStartX = eyeOffsetX + lensRadius - tube * 0.4;
+  const armGeometry = new CylinderGeometry(tube * 0.75, tube * 0.75, armLength, 8);
+
+  const leftArm = new Mesh(armGeometry, material);
+  alignCylinder(leftArm, new Vector3(-armStartX, 0, 0), new Vector3(-0.6, 0, -1).normalize(), armLength);
+  leftArm.frustumCulled = false;
+  leftArm.renderOrder = 26;
+  group.add(leftArm);
+
+  const rightArm = new Mesh(armGeometry, material);
+  alignCylinder(rightArm, new Vector3(armStartX, 0, 0), new Vector3(0.6, 0, -1).normalize(), armLength);
+  rightArm.frustumCulled = false;
+  rightArm.renderOrder = 26;
+  group.add(rightArm);
 
   return group;
 };

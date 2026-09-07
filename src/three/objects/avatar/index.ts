@@ -17,6 +17,7 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
+import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
 import matcapFragmentShader from "../../shaders/avatar-matcap/fragment.glsl";
 import headVertexShader from "../../shaders/avatar-head/vertex.glsl";
@@ -30,6 +31,12 @@ import type { Material, Bone, Texture } from "three";
 let mesh: Mesh | null = null;
 let rightHandBone: Bone | null = null;
 let phpLogo: Group | null = null;
+let glasses: Group | null = null;
+let glassesMaterial: MeshMatcapMaterial | null = null;
+let glassesHologram: Group | null = null;
+let glassesHologramMaterial: ShaderMaterial | null = null;
+let phpLogoHologram: Group | null = null;
+let phpLogoHologramMaterial: ShaderMaterial | null = null;
 
 const tIdleIntensity = { value: 0 };
 
@@ -40,6 +47,27 @@ const uniforms = { uProgress: { value: 0 }, uAmbientStrength: { value: 0 } };
 const contactPosition = new Vector3(0, -13, 0);
 const contactRotation = new Euler(0, -Math.PI, 0);
 const phpLogoMaterial = new MeshBasicMaterial({ color: 0x1f88ff });
+
+// Mirrors src/three/shaders/includes/avatar-progress/{vertex,fragment}.glsl: the
+// avatar's own body materials dissolve bottom-to-top as `uniforms.uProgress` rises,
+// by comparing a per-vertex world-Y-based "model progress" against it. Accessories
+// like glasses/the chest logo use plain (non-shader) materials, so without this same
+// math applied to their opacity they stayed fully solid while the body around them
+// turned into a translucent hologram — this keeps them in sync.
+const HOLOGRAM_SMOOTH_WIDTH = 0.002;
+
+const getModelProgress = (worldY: number) => (worldY + 0.2) / 4.7;
+
+const smoothstep = (edge0: number, edge1: number, x: number) => {
+  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
+  return t * t * (3 - 2 * t);
+};
+
+const getHologramAlpha = (worldY: number) => {
+  const progress = uniforms.uProgress.value;
+  if (progress <= 0) return 1;
+  return smoothstep(progress, progress + HOLOGRAM_SMOOTH_WIDTH, getModelProgress(worldY));
+};
 
 const init = () => {
   setupMesh();
@@ -133,8 +161,8 @@ const setupMesh = () => {
     mesh.remove(brain);
   }
 
-  attachGlasses();
-  attachPhpLogo();
+  const avatarSize = attachPhpLogo();
+  if (avatarSize) attachGlasses(avatarSize);
 
   mesh.rotation.z = 0;
 
@@ -145,15 +173,11 @@ const setupMesh = () => {
   scene.instance.add(transform);
 };
 
-const attachGlasses = () => {
-  if (!mesh) return;
+const attachGlasses = (avatarSize: Vector3) => {
+  if (!mesh || glasses) return;
 
-  const faceMesh = mesh.getObjectByName("face") as Mesh | null;
-  if (!faceMesh) return;
-
-  faceMesh.geometry.computeBoundingBox();
-  const box = faceMesh.geometry.boundingBox;
-  if (!box) return;
+  const headBone = mesh.getObjectByName("headBone") as Bone | null;
+  if (!headBone) return;
 
   // Plain (non-skinned) accessory: use the built-in matcap material instead of the
   // avatar's custom shader, which hard-requires a SkinnedMesh (boneMatX/skinWeight).
@@ -161,15 +185,80 @@ const attachGlasses = () => {
   matcapTexture.colorSpace = LinearSRGBColorSpace;
   matcapTexture.generateMipmaps = false;
   const material = new MeshMatcapMaterial({ matcap: matcapTexture });
+  // dark-plane (the About-section vignette) is `transparent: true`, and three.js
+  // always renders the whole transparent pass after the whole opaque pass regardless
+  // of renderOrder — an opaque material here would get silently painted over by it
+  // no matter how high renderOrder is set. attachPhpLogo hits the same thing below.
+  material.transparent = true;
 
-  mesh.add(createGlasses(box, material));
+  // Skinned meshes don't move with their bones as far as Object3D.matrixWorld is
+  // concerned (that's a GPU-side vertex deformation) — a sub-mesh's own bounding box
+  // reflects the bind pose only, not where it actually ends up on screen. headBone
+  // is a real scene-graph node, so its matrixWorld is reliable; use its world
+  // position as the anchor. `avatarSize` is passed in from attachPhpLogo's own
+  // Box3 measurement instead of computing a second one here — an extra
+  // Box3().setFromObject(mesh) at this point (mesh still parentless, skeleton not
+  // yet posed) was throwing off every *later* measurement of mesh too, including
+  // the PHP logo's, in a way that isn't obviously connected to this function at all.
+  glasses = createGlasses(avatarSize, material);
+  glassesMaterial = material;
+  scene.instance.add(glasses);
+
+  // A second, identically-shaped copy in the same additive-blended "hologram" shader
+  // the avatar's own body uses underneath itself (see avatarHologram/hologram.ts) —
+  // revealed by that shader's own math as the solid copy above dissolves, instead of
+  // just fading to nothing.
+  glassesHologramMaterial = createAccessoryHologramMaterial();
+  glassesHologram = createGlasses(avatarSize, glassesHologramMaterial);
+  scene.instance.add(glassesHologram);
 };
 
-const attachPhpLogo = () => {
-  if (!mesh || phpLogo) return;
+const updateGlasses = () => {
+  if (!mesh || !glasses) return;
+
+  const headBone = mesh.getObjectByName("headBone") as Bone | null;
+  if (!headBone) return;
+
+  // Same reveal condition as the PHP chest logo, so both appear together instead of
+  // the glasses popping in early during the hero -> about transition. Also hidden
+  // during the contact pose: the character turns away, and this accessory doesn't
+  // track head rotation, only position.
+  const isContact = sceneWeights.contact > 0.001;
+  const shouldShow = sceneWeights.about > 0.15 && !isContact;
+  glasses.visible = shouldShow;
+  if (glassesHologram) glassesHologram.visible = shouldShow;
+  if (!shouldShow) return;
+
+  // No updateMatrixWorld call here: updatePhpLogo() (called right before this, every
+  // tick) already refreshes transform/mesh for the current frame.
+  //
+  // The up/forward nudge is recomputed from a fresh avatarBox every tick (like
+  // updatePhpLogo does for its own offset) instead of being frozen at attach time —
+  // avatarSize genuinely changes as `transform`'s rotation animates through the
+  // hero -> about transition, so a fixed-at-setup offset drifted off the eyes
+  // partway through.
+  const avatarBox = new Box3().setFromObject(mesh);
+  const avatarSize = new Vector3();
+  avatarBox.getSize(avatarSize);
+
+  headBone.getWorldPosition(glasses.position);
+  glasses.position.y += avatarSize.y * 0.095;
+  glasses.position.z += avatarSize.z * 0.3;
+
+  if (glassesMaterial) glassesMaterial.opacity = getHologramAlpha(glasses.position.y);
+
+  if (glassesHologram && glassesHologramMaterial) {
+    glassesHologram.position.copy(glasses.position);
+    glassesHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
+    glassesHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
+  }
+};
+
+const attachPhpLogo = (): Vector3 | null => {
+  if (!mesh || phpLogo) return null;
 
   const resource = resources.items["php-logo-model"];
-  if (!resource) return;
+  if (!resource) return null;
 
   const frontLogo = new Group();
   const logoScene = resource.scene.clone(true) as Group;
@@ -218,6 +307,28 @@ const attachPhpLogo = () => {
 
   scene.instance.add(frontLogo);
   phpLogo = frontLogo;
+
+  // Same "revealed by the hologram shader as the solid copy dissolves" double used
+  // for the glasses above, built from a second clone of the same logo model.
+  const hologramLogoScene = resource.scene.clone(true) as Group;
+  hologramLogoScene.position.sub(logoCenter);
+  phpLogoHologramMaterial = createAccessoryHologramMaterial();
+
+  const frontLogoHologram = new Group();
+  frontLogoHologram.name = "php-logo-front-hologram";
+  frontLogoHologram.add(hologramLogoScene);
+  frontLogoHologram.traverse((child) => {
+    if (!(child instanceof Mesh)) return;
+    child.frustumCulled = false;
+    child.material = phpLogoHologramMaterial;
+  });
+  frontLogoHologram.scale.setScalar(scale);
+  frontLogoHologram.rotation.set(0, 0, 0);
+
+  scene.instance.add(frontLogoHologram);
+  phpLogoHologram = frontLogoHologram;
+
+  return avatarSize;
 };
 
 const tick = () => {
@@ -232,12 +343,14 @@ const tick = () => {
     uniforms.uAmbientStrength.value = 0;
     transform.visible = true;
     updatePhpLogo();
+    updateGlasses();
     return;
   }
 
   transform.position.copy(waypointsPosition);
   transform.rotation.copy(waypointsRotation);
   updatePhpLogo();
+  updateGlasses();
 
   //uniforms.uProgress.value = sceneWeightsInOut.about.in * 1.1 - 0.1;
   uniforms.uProgress.value = aboutProgress.value * 1.1 - 0.1;
@@ -256,6 +369,7 @@ const updatePhpLogo = () => {
 
   const showLogo = sceneWeights.about > 0.15 && sceneWeights.contact < 0.001;
   phpLogo.visible = showLogo;
+  if (phpLogoHologram) phpLogoHologram.visible = showLogo;
   if (!showLogo) return;
 
   transform.updateMatrixWorld(true);
@@ -273,6 +387,14 @@ const updatePhpLogo = () => {
 
   phpLogo.position.copy(logoPosition);
   phpLogo.rotation.set(Math.PI / 2, 0, 0);
+  phpLogoMaterial.opacity = getHologramAlpha(logoPosition.y);
+
+  if (phpLogoHologram && phpLogoHologramMaterial) {
+    phpLogoHologram.position.copy(phpLogo.position);
+    phpLogoHologram.rotation.copy(phpLogo.rotation);
+    phpLogoHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
+    phpLogoHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
+  }
 };
 
 const destroy = () => {
@@ -282,6 +404,9 @@ const destroy = () => {
   gsap.ticker.remove(tick);
 
   phpLogo = null;
+  phpLogoHologram = null;
+  glasses = null;
+  glassesHologram = null;
 };
 
 export const avatar = {
