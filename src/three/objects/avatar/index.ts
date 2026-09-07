@@ -9,6 +9,8 @@ import {
   LinearSRGBColorSpace,
   MeshBasicMaterial,
   MeshMatcapMaterial,
+  Matrix4,
+  AnimationMixer,
 } from "three";
 import { scene } from "../../core/scene";
 import { animations } from "./animations";
@@ -18,6 +20,7 @@ import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
 import { createBeard } from "./beard";
+import { createMouth } from "./mouth";
 import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
 import { createSiteLogo } from "./site-logo";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
@@ -28,7 +31,7 @@ import gsap from "gsap";
 import { aboutProgress } from "../../../animations/transitions/about";
 //import { avatarHologram } from "./hologram";
 
-import type { Material, Bone, Texture } from "three";
+import type { Material, Bone, Texture, AnimationClip, Object3D } from "three";
 
 let mesh: Mesh | null = null;
 let rightHandBone: Bone | null = null;
@@ -41,6 +44,10 @@ let beard: Group | null = null;
 let beardMaterial: MeshMatcapMaterial | null = null;
 let beardHologram: Group | null = null;
 let beardHologramMaterial: ShaderMaterial | null = null;
+let mouth: Group | null = null;
+let mouthMaterial: MeshMatcapMaterial | null = null;
+let mouthHologram: Group | null = null;
+let mouthHologramMaterial: ShaderMaterial | null = null;
 let phpLogoHologram: Group | null = null;
 let phpLogoHologramMaterial: ShaderMaterial | null = null;
 let contactLogo: Group | null = null;
@@ -74,6 +81,39 @@ const getHologramAlpha = (worldY: number) => {
   const progress = uniforms.uProgress.value;
   if (progress <= 0) return 1;
   return smoothstep(progress, progress + HOLOGRAM_SMOOTH_WIDTH, getModelProgress(worldY));
+};
+
+// Converts a one-off world-space nudge (e.g. "avatarSize.y * 0.095 above headBone")
+// into a fixed position in headBone's own local space, using the bone's transform at
+// the moment this runs (setupMesh, before any animation has played — i.e. bind pose).
+// A world-space offset re-applied every frame doesn't rotate with the bone, so any
+// animation that tilts the head (sleeping, wake-up, idle sway, ...) leaves it pointing
+// the old way while the actual head has turned — the accessory drifts off the face.
+// Parenting onto headBone with a local-space offset computed once, by contrast,
+// tracks the bone rigidly forever after, the same way the skinned face/eyes do.
+// Face accessories (glasses/beard/mouth) need an offset scaled to the HEAD, not the
+// whole body — using avatarSize (the full-body Box3 already computed for the chest
+// logos) put them roughly 3 head-heights away from headBone's origin. That was hard
+// to notice in the About pose specifically because headBone's rotation there is very
+// close to identity, so the oversized offset still pointed "up" and happened to land
+// near the face — but the same offset, rigidly rotated through any real head tilt
+// (e.g. the sleeping pose), swings through a much wider arc than the small headBone
+// pivot warrants and ends up floating well off the face.
+const getHeadSize = (targetMesh: Mesh, avatarSize: Vector3): Vector3 => {
+  const headMesh = targetMesh.getObjectByName("head") as Mesh | null;
+  if (!headMesh) return new Vector3(avatarSize.x * 0.15, avatarSize.y * 0.1, avatarSize.z * 0.15);
+  const headBox = new Box3().setFromObject(headMesh);
+  const headSize = new Vector3();
+  headBox.getSize(headSize);
+  return headSize;
+};
+
+const worldOffsetToLocalPosition = (bone: Bone, worldOffset: Vector3): Vector3 => {
+  const boneWorldPosition = new Vector3();
+  bone.getWorldPosition(boneWorldPosition);
+  const desiredWorldPosition = boneWorldPosition.add(worldOffset);
+  const inverseBoneMatrix = new Matrix4().copy(bone.matrixWorld).invert();
+  return desiredWorldPosition.applyMatrix4(inverseBoneMatrix);
 };
 
 const init = () => {
@@ -169,13 +209,19 @@ const setupMesh = () => {
   }
 
   const avatarSize = attachPhpLogo();
+
+  // Reset before the headBone-parented accessories below capture their local offset
+  // (worldOffsetToLocalPosition) — they need mesh's final resting rotation, not
+  // whatever the cloned skeleton's rotation.z happened to be beforehand.
+  mesh.rotation.z = 0;
+  mesh.updateMatrixWorld(true);
+
   if (avatarSize) {
     attachGlasses(avatarSize);
     attachBeard(avatarSize);
+    attachMouth(avatarSize);
     attachContactLogo(avatarSize);
   }
-
-  mesh.rotation.z = 0;
 
   transform.add(mesh);
 
@@ -201,6 +247,12 @@ const attachGlasses = (avatarSize: Vector3) => {
   // of renderOrder — an opaque material here would get silently painted over by it
   // no matter how high renderOrder is set. attachPhpLogo hits the same thing below.
   material.transparent = true;
+  // Head-scaled local offsets sit close to the actual skull surface, so ordinary
+  // depth-testing against the head geometry hid most of this behind it, like
+  // attachPhpLogo's chest logo needed for the shirt. Drawing it as a "decal" on top
+  // regardless of depth is far more robust than chasing an exact-enough offset.
+  material.depthTest = false;
+  material.depthWrite = false;
 
   // Skinned meshes don't move with their bones as far as Object3D.matrixWorld is
   // concerned (that's a GPU-side vertex deformation) — a sub-mesh's own bounding box
@@ -213,56 +265,43 @@ const attachGlasses = (avatarSize: Vector3) => {
   // the PHP logo's, in a way that isn't obviously connected to this function at all.
   glasses = createGlasses(avatarSize, material);
   glassesMaterial = material;
-  scene.instance.add(glasses);
+  // Parented directly onto headBone instead of living at scene-level with a
+  // world-space position recomputed every tick — see worldOffsetToLocalPosition's
+  // comment. This is what makes it track the head rigidly through every animation,
+  // exactly like the skinned eyes/face do. The actual local offset isn't set here —
+  // see positionFaceAccessories, called once the skeleton has struck its first real
+  // pose, which this runs well before (setupMesh, still in bind/rest pose).
+  headBone.add(glasses);
 
   // A second, identically-shaped copy in the same additive-blended "hologram" shader
   // the avatar's own body uses underneath itself (see avatarHologram/hologram.ts) —
   // revealed by that shader's own math as the solid copy above dissolves, instead of
-  // just fading to nothing.
+  // just fading to nothing. Parented alongside the solid copy so the two automatically
+  // stay in sync with no per-frame position copying needed.
   glassesHologramMaterial = createAccessoryHologramMaterial();
   glassesHologram = createGlasses(avatarSize, glassesHologramMaterial);
-  scene.instance.add(glassesHologram);
+  headBone.add(glassesHologram);
 };
 
-const updateGlasses = () => {
-  if (!mesh || !glasses) return;
+const worldPositionScratch = new Vector3();
 
-  const headBone = mesh.getObjectByName("headBone") as Bone | null;
-  if (!headBone) return;
+const updateGlasses = () => {
+  if (!glasses) return;
 
   // Same reveal condition as the chest logos, so everything appears together instead
   // of the glasses popping in early during the hero -> about transition. Shown in
-  // both the about and contact poses — the camera moves to face the character in
-  // both, so headBone's world position stays a reliable anchor either way.
+  // both the about and contact poses.
   const shouldShow = sceneWeights.about > 0.15 || sceneWeights.contact > 0.15;
   glasses.visible = shouldShow;
   if (glassesHologram) glassesHologram.visible = shouldShow;
   if (!shouldShow) return;
 
-  // Unlike phpLogo/contactLogo, glasses show in both the about and contact poses, and
-  // updatePhpLogo only refreshes these matrices in the about branch — so this can't
-  // rely on a sibling function having done it already the way those two do for each
-  // other within the same pose.
-  transform.updateMatrixWorld(true);
-  mesh.updateMatrixWorld(true);
+  if (glassesMaterial) {
+    glasses.getWorldPosition(worldPositionScratch);
+    glassesMaterial.opacity = getHologramAlpha(worldPositionScratch.y);
+  }
 
-  // The up/forward nudge is recomputed from a fresh avatarBox every tick (like
-  // updatePhpLogo does for its own offset) instead of being frozen at attach time —
-  // avatarSize genuinely changes as `transform`'s rotation animates through the
-  // hero -> about transition, so a fixed-at-setup offset drifted off the eyes
-  // partway through.
-  const avatarBox = new Box3().setFromObject(mesh);
-  const avatarSize = new Vector3();
-  avatarBox.getSize(avatarSize);
-
-  headBone.getWorldPosition(glasses.position);
-  glasses.position.y += avatarSize.y * 0.095;
-  glasses.position.z += avatarSize.z * 0.3;
-
-  if (glassesMaterial) glassesMaterial.opacity = getHologramAlpha(glasses.position.y);
-
-  if (glassesHologram && glassesHologramMaterial) {
-    glassesHologram.position.copy(glasses.position);
+  if (glassesHologramMaterial) {
     glassesHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
     glassesHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
   }
@@ -286,49 +325,153 @@ const attachBeard = (avatarSize: Vector3) => {
   // untinted black matcap here reads as a grey/metallic blob rather than facial hair.
   const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x4a2f1e });
   material.transparent = true;
+  // See attachGlasses — drawn as a "decal" on top of the head regardless of depth.
+  material.depthTest = false;
+  material.depthWrite = false;
 
   beard = createBeard(avatarSize, material);
   beardMaterial = material;
-  scene.instance.add(beard);
+  // Same headBone-local parenting as the glasses — position set later, see
+  // positionFaceAccessories.
+  headBone.add(beard);
 
   // Hologram double, same as the glasses': revealed by the additive hologram shader
   // as the solid copy above dissolves during the about-section scroll transition.
   beardHologramMaterial = createAccessoryHologramMaterial();
   beardHologram = createBeard(avatarSize, beardHologramMaterial);
-  scene.instance.add(beardHologram);
+  headBone.add(beardHologram);
 };
 
 const updateBeard = () => {
-  if (!mesh || !beard) return;
-
-  const headBone = mesh.getObjectByName("headBone") as Bone | null;
-  if (!headBone) return;
+  if (!beard) return;
 
   const shouldShow = sceneWeights.about > 0.15 || sceneWeights.contact > 0.15;
   beard.visible = shouldShow;
   if (beardHologram) beardHologram.visible = shouldShow;
   if (!shouldShow) return;
 
-  transform.updateMatrixWorld(true);
-  mesh.updateMatrixWorld(true);
+  if (beardMaterial) {
+    beard.getWorldPosition(worldPositionScratch);
+    beardMaterial.opacity = getHologramAlpha(worldPositionScratch.y);
+  }
 
-  const avatarBox = new Box3().setFromObject(mesh);
-  const avatarSize = new Vector3();
-  avatarBox.getSize(avatarSize);
-
-  // Anchored to the same headBone as the glasses, but nudged up to jaw height
-  // instead of eye height (headBone itself sits low, near the neck) — well below
-  // the glasses' own 0.095 offset so the two don't overlap.
-  headBone.getWorldPosition(beard.position);
-  beard.position.y += avatarSize.y * 0.024;
-  beard.position.z += avatarSize.z * 0.28;
-
-  if (beardMaterial) beardMaterial.opacity = getHologramAlpha(beard.position.y);
-
-  if (beardHologram && beardHologramMaterial) {
-    beardHologram.position.copy(beard.position);
+  if (beardHologramMaterial) {
     beardHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
     beardHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
+  }
+};
+
+const attachMouth = (avatarSize: Vector3) => {
+  if (!mesh || mouth) return;
+
+  const headBone = mesh.getObjectByName("headBone") as Bone | null;
+  if (!headBone) return;
+
+  const matcapTexture = resources.items["matcap-black"];
+  matcapTexture.colorSpace = LinearSRGBColorSpace;
+  matcapTexture.generateMipmaps = false;
+  // A muted brownish-red ("lips") rather than the beard's brown, so the two read as
+  // distinct features instead of blurring into one shape.
+  const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x6b3535 });
+  material.transparent = true;
+  // See attachGlasses — drawn as a "decal" on top of the head regardless of depth.
+  material.depthTest = false;
+  material.depthWrite = false;
+
+  mouth = createMouth(avatarSize, material);
+  mouthMaterial = material;
+  // Same headBone-local parenting as the glasses/beard — position set later, see
+  // positionFaceAccessories.
+  headBone.add(mouth);
+
+  mouthHologramMaterial = createAccessoryHologramMaterial();
+  mouthHologram = createMouth(avatarSize, mouthHologramMaterial);
+  headBone.add(mouthHologram);
+};
+
+// A throwaway clone of the rig, posed to frame 0 of the "idle" clip and never added
+// to any scene — used only to compute a deterministic reference pose for
+// positionFaceAccessories below. See its comment for why this exists: measuring off
+// the live, currently-rendering mesh/mixer instead (bind pose, "whichever pose the
+// first tick happens to land on", or even "the resting idle pose" sampled at an
+// arbitrary moment) all turned out to give a different, wrong-looking offset on
+// every reload — desktop-idle loops continuously (LoopPingPong), so "settled into
+// idle" still means "at some arbitrary, unrepeatable point in that loop" unless a
+// specific frame of it is pinned down explicitly, as this does.
+const buildCalibrationHead = (): { headBone: Bone; mesh: Object3D } | null => {
+  const resource = resources.items["avatar-model"];
+  const calibrationMesh = cloneSkeleton(resource.scene.children[0]) as Object3D;
+  calibrationMesh.rotation.z = 0;
+
+  const idleClip = resource.animations.find((clip: AnimationClip) => clip.name === "idle");
+  if (idleClip) {
+    const calibrationMixer = new AnimationMixer(calibrationMesh);
+    calibrationMixer.clipAction(idleClip).play();
+    calibrationMixer.setTime(0);
+  }
+
+  calibrationMesh.updateMatrixWorld(true);
+  const headBone = calibrationMesh.getObjectByName("headBone") as Bone | null;
+  return headBone ? { headBone, mesh: calibrationMesh } : null;
+};
+
+let faceAccessoriesPositioned = false;
+
+// glasses/beard/mouth are parented onto headBone in attachGlasses/attachBeard/
+// attachMouth (during setupMesh), but their local offset is computed here instead —
+// against buildCalibrationHead's isolated, deterministic pose rather than the live
+// mesh/mixer, and so no longer timing-dependent at all. A *local* offset, once
+// computed, is valid regardless of which posed instance of the rig it's measured
+// against (that's the whole point of local space) — so calibrating against a
+// throwaway clone and applying the result to the live headBone is exactly correct,
+// not an approximation.
+const positionFaceAccessories = () => {
+  if (faceAccessoriesPositioned || !glasses || !beard || !mouth) return;
+
+  const calibration = buildCalibrationHead();
+  if (!calibration) return;
+
+  faceAccessoriesPositioned = true;
+
+  const avatarBox = new Box3().setFromObject(calibration.mesh);
+  const avatarSize = new Vector3();
+  avatarBox.getSize(avatarSize);
+  const headSize = getHeadSize(calibration.mesh as Mesh, avatarSize);
+
+  glasses.position.copy(
+    worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.2, headSize.z * 0.3)),
+  );
+  glassesHologram?.position.copy(glasses.position);
+
+  beard.position.copy(
+    worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * -0.04, headSize.z * 0.16)),
+  );
+  beardHologram?.position.copy(beard.position);
+
+  mouth.position.copy(
+    worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.05, headSize.z * 0.27)),
+  );
+  mouthHologram?.position.copy(mouth.position);
+};
+
+const updateMouth = () => {
+  if (!mouth) return;
+
+  // About only — the Contact face texture (sleeping/proud frames) already draws its
+  // own mouth, so this accessory would just duplicate/overlap it there.
+  const shouldShow = sceneWeights.about > 0.15;
+  mouth.visible = shouldShow;
+  if (mouthHologram) mouthHologram.visible = shouldShow;
+  if (!shouldShow) return;
+
+  if (mouthMaterial) {
+    mouth.getWorldPosition(worldPositionScratch);
+    mouthMaterial.opacity = getHologramAlpha(worldPositionScratch.y);
+  }
+
+  if (mouthHologramMaterial) {
+    mouthHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
+    mouthHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
   }
 };
 
@@ -355,9 +498,13 @@ const attachPhpLogo = (): Vector3 | null => {
   logoScene.position.sub(logoCenter);
   frontLogo.add(logoScene);
 
-  const chestWidth = avatarSize.x * 0.22;
+  const chestWidth = avatarSize.x * 0.14;
   const chestHeight = avatarSize.y * 0.10;
-  const scale = Math.min(chestWidth / Math.max(logoSize.x, 0.0001), chestHeight / Math.max(logoSize.y, 0.0001)) * 1.35;
+  // Non-uniform: the logo's own aspect ratio doesn't match the chest target's, so a
+  // single Math.min-derived scale was bound by the tighter (height) constraint,
+  // leaving it visibly narrower than the available chest width instead of filling it.
+  const scaleX = (chestWidth / Math.max(logoSize.x, 0.0001)) * 1.35;
+  const scaleY = (chestHeight / Math.max(logoSize.y, 0.0001)) * 1.35;
 
   const styleLogo = (object: Group) => {
     object.traverse((child) => {
@@ -379,7 +526,7 @@ const attachPhpLogo = (): Vector3 | null => {
 
   styleLogo(frontLogo);
 
-  frontLogo.scale.setScalar(scale);
+  frontLogo.scale.set(scaleX, scaleY, scaleY);
 
   frontLogo.rotation.set(0, 0, 0);
 
@@ -400,7 +547,7 @@ const attachPhpLogo = (): Vector3 | null => {
     child.frustumCulled = false;
     child.material = phpLogoHologramMaterial;
   });
-  frontLogoHologram.scale.setScalar(scale);
+  frontLogoHologram.scale.set(scaleX, scaleY, scaleY);
   frontLogoHologram.rotation.set(0, 0, 0);
 
   scene.instance.add(frontLogoHologram);
@@ -411,6 +558,7 @@ const attachPhpLogo = (): Vector3 | null => {
 
 const tick = () => {
   animations.update();
+  positionFaceAccessories();
 
   const isContact = sceneWeights.contact > 0.001;
 
@@ -423,6 +571,7 @@ const tick = () => {
     updatePhpLogo();
     updateGlasses();
     updateBeard();
+    updateMouth();
     updateContactLogo();
     return;
   }
@@ -432,6 +581,7 @@ const tick = () => {
   updatePhpLogo();
   updateGlasses();
   updateBeard();
+  updateMouth();
   updateContactLogo();
 
   //uniforms.uProgress.value = sceneWeightsInOut.about.in * 1.1 - 0.1;
@@ -508,22 +658,19 @@ const updatePhpLogo = () => {
   if (phpLogoHologram) phpLogoHologram.visible = showLogo;
   if (!showLogo) return;
 
+  // Anchored to the chest bone instead of avatarBox.max-based math (same fix as
+  // updateContactLogo below needed for the same reason): a box-extent-derived offset
+  // is fragile — it silently broke at some point, ending up positioned well above the
+  // head — where a bone anchor is a stable, direct reference to the actual chest.
+  const chestBone = mesh.getObjectByName("spine2Bone") as Bone | null;
+  if (!chestBone) return;
+
   transform.updateMatrixWorld(true);
   mesh.updateMatrixWorld(true);
 
-  const avatarBox = new Box3().setFromObject(mesh);
-  const avatarSize = new Vector3();
-  const logoPosition = new Vector3();
-  avatarBox.getSize(avatarSize);
-  avatarBox.getCenter(logoPosition);
-
-  logoPosition.x += avatarSize.x * 0.12;
-  logoPosition.y = avatarBox.max.y + avatarSize.y * 0.35;
-  logoPosition.z = avatarBox.max.z + avatarSize.z * 0.12;
-
-  phpLogo.position.copy(logoPosition);
-  phpLogo.rotation.set(Math.PI / 2, 0, 0);
-  phpLogoMaterial.opacity = getHologramAlpha(logoPosition.y);
+  chestBone.getWorldPosition(phpLogo.position);
+  phpLogo.position.z += 0.5;
+  phpLogoMaterial.opacity = getHologramAlpha(phpLogo.position.y);
 
   if (phpLogoHologram && phpLogoHologramMaterial) {
     phpLogoHologram.position.copy(phpLogo.position);
@@ -545,6 +692,8 @@ const destroy = () => {
   glassesHologram = null;
   beard = null;
   beardHologram = null;
+  mouth = null;
+  mouthHologram = null;
   contactLogo = null;
 };
 
