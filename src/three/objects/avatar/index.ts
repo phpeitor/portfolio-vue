@@ -18,6 +18,7 @@ import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
 import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
+import { createSiteLogo } from "./site-logo";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
 import matcapFragmentShader from "../../shaders/avatar-matcap/fragment.glsl";
 import headVertexShader from "../../shaders/avatar-head/vertex.glsl";
@@ -37,6 +38,7 @@ let glassesHologram: Group | null = null;
 let glassesHologramMaterial: ShaderMaterial | null = null;
 let phpLogoHologram: Group | null = null;
 let phpLogoHologramMaterial: ShaderMaterial | null = null;
+let contactLogo: Group | null = null;
 
 const tIdleIntensity = { value: 0 };
 
@@ -162,7 +164,10 @@ const setupMesh = () => {
   }
 
   const avatarSize = attachPhpLogo();
-  if (avatarSize) attachGlasses(avatarSize);
+  if (avatarSize) {
+    attachGlasses(avatarSize);
+    attachContactLogo(avatarSize);
+  }
 
   mesh.rotation.z = 0;
 
@@ -219,19 +224,22 @@ const updateGlasses = () => {
   const headBone = mesh.getObjectByName("headBone") as Bone | null;
   if (!headBone) return;
 
-  // Same reveal condition as the PHP chest logo, so both appear together instead of
-  // the glasses popping in early during the hero -> about transition. Also hidden
-  // during the contact pose: the character turns away, and this accessory doesn't
-  // track head rotation, only position.
-  const isContact = sceneWeights.contact > 0.001;
-  const shouldShow = sceneWeights.about > 0.15 && !isContact;
+  // Same reveal condition as the chest logos, so everything appears together instead
+  // of the glasses popping in early during the hero -> about transition. Shown in
+  // both the about and contact poses — the camera moves to face the character in
+  // both, so headBone's world position stays a reliable anchor either way.
+  const shouldShow = sceneWeights.about > 0.15 || sceneWeights.contact > 0.15;
   glasses.visible = shouldShow;
   if (glassesHologram) glassesHologram.visible = shouldShow;
   if (!shouldShow) return;
 
-  // No updateMatrixWorld call here: updatePhpLogo() (called right before this, every
-  // tick) already refreshes transform/mesh for the current frame.
-  //
+  // Unlike phpLogo/contactLogo, glasses show in both the about and contact poses, and
+  // updatePhpLogo only refreshes these matrices in the about branch — so this can't
+  // rely on a sibling function having done it already the way those two do for each
+  // other within the same pose.
+  transform.updateMatrixWorld(true);
+  mesh.updateMatrixWorld(true);
+
   // The up/forward nudge is recomputed from a fresh avatarBox every tick (like
   // updatePhpLogo does for its own offset) instead of being frozen at attach time —
   // avatarSize genuinely changes as `transform`'s rotation animates through the
@@ -344,6 +352,7 @@ const tick = () => {
     transform.visible = true;
     updatePhpLogo();
     updateGlasses();
+    updateContactLogo();
     return;
   }
 
@@ -351,6 +360,7 @@ const tick = () => {
   transform.rotation.copy(waypointsRotation);
   updatePhpLogo();
   updateGlasses();
+  updateContactLogo();
 
   //uniforms.uProgress.value = sceneWeightsInOut.about.in * 1.1 - 0.1;
   uniforms.uProgress.value = aboutProgress.value * 1.1 - 0.1;
@@ -362,6 +372,59 @@ const tick = () => {
   } else {
     mesh.visible = true;
   }
+};
+
+const contactLogoMaterial = new MeshBasicMaterial({ color: 0xffffff });
+
+const attachContactLogo = (avatarSize: Vector3) => {
+  if (!mesh || contactLogo) return;
+
+  const logo = createSiteLogo(contactLogoMaterial);
+  contactLogoMaterial.transparent = true;
+  contactLogoMaterial.depthTest = false;
+  contactLogoMaterial.depthWrite = false;
+  contactLogoMaterial.side = 2;
+
+  const logoBox = new Box3().setFromObject(logo);
+  const logoSize = new Vector3();
+  const logoCenter = new Vector3();
+  logoBox.getSize(logoSize);
+  logoBox.getCenter(logoCenter);
+  logo.position.sub(logoCenter);
+
+  const frontLogo = new Group();
+  frontLogo.name = "contact-logo-front";
+  frontLogo.add(logo);
+
+  const chestWidth = avatarSize.x * 0.16;
+  const chestHeight = avatarSize.y * 0.07;
+  const scale = Math.min(chestWidth / Math.max(logoSize.x, 0.0001), chestHeight / Math.max(logoSize.y, 0.0001));
+  frontLogo.scale.setScalar(scale);
+
+  scene.instance.add(frontLogo);
+  contactLogo = frontLogo;
+};
+
+const updateContactLogo = () => {
+  if (!mesh || !contactLogo) return;
+
+  const showLogo = sceneWeights.contact > 0.15;
+  contactLogo.visible = showLogo;
+  if (!showLogo) return;
+
+  transform.updateMatrixWorld(true);
+  mesh.updateMatrixWorld(true);
+
+  const avatarBox = new Box3().setFromObject(mesh);
+  const avatarSize = new Vector3();
+  const logoPosition = new Vector3();
+  avatarBox.getSize(avatarSize);
+  avatarBox.getCenter(logoPosition);
+
+  logoPosition.y = avatarBox.max.y + avatarSize.y * 0.42;
+  logoPosition.z = avatarBox.max.z + avatarSize.z * 0.12;
+
+  contactLogo.position.copy(logoPosition);
 };
 
 const updatePhpLogo = () => {
@@ -407,6 +470,7 @@ const destroy = () => {
   phpLogoHologram = null;
   glasses = null;
   glassesHologram = null;
+  contactLogo = null;
 };
 
 export const avatar = {
