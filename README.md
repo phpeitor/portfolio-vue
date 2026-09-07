@@ -4,7 +4,7 @@
 [![forthebadge](https://forthebadge.com/badges/built-with-love.svg)](https://www.linkedin.com/in/drphp/)
 
 <a href="https://www.instagram.com/amvsoft.tech/">
-  <img src="https://assets.awwwards.com/awards/element/2022/04/62685b5d39137607918646.png" alt="Instagram" width="800">
+  <img src="https://assets.awwwards.com/awards/element/2022/04/62685b5d39137607918646.png" alt="Instagram" width="700">
 </a>
 
 Portfolio personal interactivo con secciones animadas, proyectos, audio, WebGL y escenas 3D. El sitio combina UI en Vue con una escena `three.js` que contiene habitación, avatar, laboratorio/contacto, modelos GLB, shaders GLSL, sonidos y transiciones controladas por scroll.
