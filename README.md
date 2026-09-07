@@ -34,20 +34,21 @@ El proyecto usa `type: "module"`, así que los scripts y módulos corren como ES
 npm install
 ```
 
-## Levantar en desarrollo
+## Desarrollo
 
 ```bash
 npm run dev
 ```
 
-El servidor corre en `http://localhost:3000`.
+El servidor corre en `http://localhost:3000` (configurado en `vite.config.ts` con `strictPort: true` y `host: true`, soporta assets `.glb`, `.gltf`, `.obj`, `.mtl`, imágenes, audio y shaders).
 
-La configuración está en `vite.config.ts`:
+## Build y despliegue
 
-- Puerto fijo `3000`
-- `strictPort: true`
-- `host: true`
-- Soporte de assets para `.glb`, `.gltf`, `.obj`, `.mtl`, imágenes, audio y shaders
+```bash
+npm run build
+```
+
+Genera el build de producción en `dist/`. En `dev.metadatape.com` el sitio se sirve como **static root** directo desde `dist/` vía nginx: **no hay paso de deploy aparte** — correr `npm run build` en el servidor actualiza el sitio en vivo de inmediato. No hay proceso separado de "publicar"; asegurarse de que el build pasa `typecheck` antes de dejarlo corriendo.
 
 ## Scripts
 
@@ -55,7 +56,7 @@ La configuración está en `vite.config.ts`:
 | --- | --- |
 | `npm run dev` | Levanta Vite en desarrollo |
 | `npm run typecheck` | Ejecuta `vue-tsc -b` |
-| `npm run build` | Typecheck y build de producción en `dist/` |
+| `npm run build` | Typecheck y build de producción en `dist/` (equivale a deploy en prod) |
 | `npm run preview` | Sirve el build localmente |
 
 ## Estructura Principal
@@ -65,19 +66,22 @@ La configuración está en `vite.config.ts`:
 | `src/main.ts` | Entrada de la app |
 | `src/App.vue` | Composición principal |
 | `src/components/` | Componentes UI reutilizables |
-| `src/features/` | Secciones de alto nivel del sitio |
-| `src/content/` | Contenido de proyectos, previews, textos y social links |
-| `src/i18n/` | Helpers de idioma |
+| `src/composables/` | Lógica reutilizable (router, scroll, tema del header, preloader, transiciones) |
+| `src/features/` | Secciones de alto nivel del sitio (home, projects, sounds) |
+| `src/content/` | Contenido de proyectos, previews, textos legales y social links |
+| `src/i18n/` | Store y helpers de idioma (`es`/`en`) |
 | `src/animations/` | Timelines, escenas, waypoints y transiciones |
 | `src/three/` | Core WebGL, objetos 3D, materiales, shaders, raycast |
 | `src/assets/` | Modelos, texturas, estilos, sonidos, videos e imágenes |
-| `capturas/` | Capturas manuales usadas para revisión visual |
+| `src/utils/` | Helpers compartidos (loader de recursos, sizes, eventos, math) |
+
+> Nota: no existe carpeta `capturas/` en el repo pese a lo que decía una versión previa de este README — si se retoma la práctica de guardar capturas manuales de QA visual, documentarlo aquí de nuevo.
 
 ## Recursos 3D & Assets
 
 Todos los recursos cargados por la experiencia WebGL se registran en `src/sources.ts`.
 
-Ejemplos actuales:
+Modelos GLB registrados actualmente:
 
 - `avatar-model`: `src/assets/models/avatar.glb`
 - `room-model`: `src/assets/models/room.glb`
@@ -85,6 +89,10 @@ Ejemplos actuales:
 - `contact-model`: `src/assets/models/contact.glb`
 - `elephant-model`: `src/assets/elephant/demo.glb`
 - `php-logo-model`: `src/assets/elephant/php.glb`
+- `laptop-model`: `src/assets/glb/laptop.glb`
+- `baby-elephant-model`: `src/assets/glb/baby_elephant.glb`
+
+Esta lista puede quedar desactualizada — `src/sources.ts` es la fuente de verdad, revisar ahí antes de asumir qué está cargado.
 
 El loader vive en `src/utils/resources.ts` y soporta:
 
@@ -111,10 +119,10 @@ Los puntos de cámara para landscape/portrait están en `src/animations/waypoint
 
 ## Objetos Importantes
 
-- `src/three/objects/room/`: habitación, elementos interactivos, elefante, música, mouse, desktops.
-- `src/three/objects/avatar/`: avatar, animaciones, face, desktop izquierdo y logo PHP.
+- `src/three/objects/room/`: habitación, elementos interactivos, elefante de escritorio, elefante bebé animado (caminata), música, mouse, desktops.
+- `src/three/objects/avatar/`: avatar, animaciones, face, accesorios (glasses), desktop izquierdo y logo PHP.
 - `src/three/objects/lab/`: escena holográfica/laboratorio.
-- `src/three/objects/contact/`: escena de contacto.
+- `src/three/objects/contact/`: escena de contacto (incluye laptop como prop).
 
 ## Flujo Modelos GLB
 
@@ -122,13 +130,15 @@ Los puntos de cámara para landscape/portrait están en `src/animations/waypoint
 2. Importarlo en `src/sources.ts`.
 3. Registrar el recurso con un nombre estable.
 4. Usarlo desde `resources.items["nombre-del-recurso"]` después de que el loader esté listo.
-5. Clonar modelos con `resource.scene.clone(true)` o `SkeletonUtils.clone` si tienen skeleton.
-6. Normalizar escala, centro y orientación con `Box3` antes de posicionarlo.
-7. Ejecutar `npm run typecheck` y `npm run build`.
+5. **Si el modelo tiene skeleton/bones (rig animado), clonar siempre con `SkeletonUtils.clone(resource.scene)` — nunca `resource.scene.clone(true)`.** Un clone plano no relinquea el skinning al nuevo skeleton y el modelo renderiza invisible sin ningún error, sin importar que posición/escala estén correctas. Confirmar con `grep` si el GLB tiene `"skins"` en su JSON antes de escribir código.
+6. Normalizar escala, centro y orientación con `Box3` antes de posicionarlo — si el modelo necesita rotación para corregir su orientación (ejes no estándar), aplicar la rotación **antes** de medir el `Box3`, nunca después, o el fit queda calculado sobre la forma equivocada.
+7. Esta escena no tiene luces: cualquier material `MeshStandardMaterial`/PBR renderiza negro puro. Convertir a `MeshBasicMaterial` (conservando `.map`) para que sea visible, como ya hacen `laptop.ts` y `baby-elephant.ts`.
+8. Si el modelo trae una animación de caminata/locomoción y el desplazamiento se controla por código (ej. GSAP), verificar que la animación no tenga ella misma una traslación grande baked-in en algún hueso intermedio — si la tiene, compite con el movimiento externo y se ve como saltos/teletransporte en vez de una caminata continua.
+9. Ejecutar `npm run typecheck` y `npm run build`.
 
 ## Contenido de Proyectos
 
-- Proyectos por idioma: `src/content/projects/{en,de}/<slug>.ts`
+- Proyectos por idioma: `src/content/projects/{en,es}/<slug>.ts`
 - Previews/listado: `src/content/projects/previews/`
 - IDs y slugs: `src/content/projects/index.ts`
 - Tags y variantes visuales: `src/components/tagVariants.ts`
@@ -160,12 +170,13 @@ npm run typecheck
 npm run build
 ```
 
-Para cambios visuales, revisar también en navegador en `http://localhost:3000` y crear capturas en `capturas/` cuando el cambio sea de layout, WebGL o animación.
+Para cambios visuales/WebGL, `npm run build` + revisar en navegador es obligatorio — typecheck y build verifican que el código compila, no que la escena se vea o se comporte correctamente. En este proyecto no basta con mutar objetos de Three.js en vivo desde devtools/consola para probar una posición o escala: en la práctica esas mutaciones no siempre se reflejan de forma confiable en lo renderizado. El ciclo que sí funciona es editar la constante en el código fuente → `npm run build` → recargar la página.
 
 ## Notas de Mantenimiento
 
-- No modificar modelos/escenas a ciegas: revisar primero `src/sources.ts`, `src/three/objects/*` y las capturas existentes.
+- No modificar modelos/escenas a ciegas: revisar primero `src/sources.ts` y `src/three/objects/*` antes de tocar posiciones/escalas.
 - Los modelos grandes impactan el bundle; preferir GLB optimizados.
-- Para assets GLB externos, preferir modelos `Y-up`, centrados en origen y con escala razonable.
+- Para assets GLB externos, preferir modelos `Y-up`, centrados en origen y con escala razonable — algunos exportadores/conversores automáticos (ej. herramientas de imagen a STL) generan geometría con ejes no estándar (`Z-up`) sin avisarlo; si un modelo se ve girado/aplastado sin razón aparente, sospechar del eje antes que de la matemática de transformación.
 - Si el GLB viene comprimido con meshopt, mantener `MeshoptDecoder` configurado.
 - El diseño visual de los modelos debe coincidir con el estilo cartoon/low-poly del portfolio.
+- **Deploy en `dev.metadatape.com` = `npm run build` en el servidor, sin paso adicional** (nginx sirve `dist/` como static root). No existe un comando `deploy` separado ni un CD automatizado — tratar cada `build` en el VPS como publicación inmediata a producción.
