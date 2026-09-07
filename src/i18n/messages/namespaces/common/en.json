@@ -23,6 +23,7 @@
   "services": "Skills",
   "start-a-new-project": "Start a new project",
   "source-code": "Source Code",
+  "switch-language": "Switch language",
   "switch-to-project": "Switch to project {project}",
   "version": "Version",
   "view-project": "View project"

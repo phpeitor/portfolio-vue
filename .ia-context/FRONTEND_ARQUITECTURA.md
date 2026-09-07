@@ -155,20 +155,20 @@ Home.vue (onMounted)
 - `utils/load.ts`: carga dinámica de JSON por namespace/locale.
 - `utils/translate.ts`: función `t(key)` usada directo en componentes (`t("get-in-touch")`), lee de `translations.value`.
 - `utils/template.ts`: interpolación de variables en strings traducidos.
-- `messages/namespaces/<namespace>/<locale>.json`: los textos en sí. Idiomas soportados: `en`, `de` (ver `constants/index.ts` → `LOCALES`).
+- `messages/namespaces/<namespace>/<locale>.json`: los textos en sí. Idiomas soportados: `en`, `es` (ver `constants/index.ts` → `LOCALES`).
 
 **Regla:** todo string visible en UI pasa por `t()`; no hay strings de UI hardcodeados en componentes (excepto contenido de proyectos, que vive en `content/` por idioma — ver §12).
 
 ## 12. Contenido (`src/content/`)
 
 - `content/projects/index.ts`: define `projectIds` (tupla) → `ProjectId` es `(typeof projectIds)[number]`. Este tipo gobierna qué slugs son válidos en todo el sistema de tipos.
-- `content/projects/{en,de}/<slug>.ts`: contenido completo de cada proyecto (`ProjectContent`: título, tema, tags, componentes de la página de detalle).
-- `content/projects/previews/{en,de}.ts`: datos resumidos para las cards de listado (`ProjectPreview`).
+- `content/projects/{en,es}/<slug>.ts`: contenido completo de cada proyecto (`ProjectContent`: título, tema, tags, componentes de la página de detalle).
+- `content/projects/previews/{en,es}.ts`: datos resumidos para las cards de listado (`ProjectPreview`).
 - `content/types.ts`: `ProjectContent`, `SkillContent`, `ProjectPreview`.
 - `content/social.ts`: links sociales usados por `Header`/`Footer`/`Social.vue`.
 - `features/projects/types.ts`: `ProjectComponent` es una discriminated union generada a partir de `ProjectComponents` (mapea `type` → `props` de cada componente de contenido: `imageText`, `text`, `list`, `media`). Al agregar un nuevo tipo de bloque de contenido, se registra aquí y en `ProjectComponents`.
 
-**Regla:** slugs deben mantenerse consistentes entre `projectIds`, `previews/*` y `projects/{en,de}/*` — si falta uno, TypeScript strict debería marcarlo, pero conviene revisar ambos idiomas al agregar/quitar un proyecto.
+**Regla:** slugs deben mantenerse consistentes entre `projectIds`, `previews/*` y `projects/{en,es}/*` — si falta uno, TypeScript strict debería marcarlo, pero conviene revisar ambos idiomas al agregar/quitar un proyecto.
 
 ## 13. Audio (`src/features/sounds/`)
 

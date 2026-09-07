@@ -23,6 +23,7 @@
   "services": "Habilidades",
   "start-a-new-project": "Iniciar un nuevo proyecto",
   "source-code": "Código fuente",
+  "switch-language": "Cambiar idioma",
   "switch-to-project": "Cambiar al proyecto {project}",
   "version": "Version",
   "view-project": "Ver proyecto"

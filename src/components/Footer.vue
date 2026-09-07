@@ -2,7 +2,6 @@
 import Social from "./Social.vue";
 import Link from "./Link.vue";
 import Clickable from "./Clickable.vue";
-import LangSwitch from "./LangSwitch.vue";
 import NotchSection from "./NotchSection.vue";
 import { t } from "../i18n/utils/translate";
 import { locale } from "../i18n/store";
@@ -44,7 +43,7 @@ const { withSocial = true } = defineProps<Props>();
           <div class="footer-top-links-legal">
             <Clickable renderAs="div">
               <Link
-                :href="locale === 'de' ? '/de/privacy.html' : '/privacy.html'"
+                :href="locale === 'es' ? '/es/privacy.html' : '/privacy.html'"
                 class="footer-link"
                 :external="true"
                 data-cursor="circle-white"
@@ -55,7 +54,7 @@ const { withSocial = true } = defineProps<Props>();
             </Clickable>
             <Clickable renderAs="div">
               <Link
-                :href="locale === 'de' ? '/de/legal.html' : '/legal.html'"
+                :href="locale === 'es' ? '/es/legal.html' : '/legal.html'"
                 class="footer-link children-unclickable"
                 :external="true"
                 data-cursor="circle-white"
@@ -65,7 +64,6 @@ const { withSocial = true } = defineProps<Props>();
               >
             </Clickable>
           </div>
-          <LangSwitch />
         </div>
       </div>
       <div class="footer-credits">

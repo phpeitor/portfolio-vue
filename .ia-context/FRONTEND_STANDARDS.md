@@ -54,8 +54,8 @@ Al agregar un elemento clickeable/hovereable nuevo, usar estos atributos en vez 
 ## 7. i18n
 
 - Ningún string de UI (labels, aria-labels, botones) hardcodeado en un componente: usar `t("key")` de `src/i18n/utils/translate.ts`.
-- Al agregar una key nueva, agregarla en **todos** los locales soportados en el mismo cambio (`messages/namespaces/common/en.json` y `.../de.json`) — nunca dejar un idioma sin la key aunque el default (`en`) la resuelva.
-- El contenido de proyectos (`content/projects/{en,de}/*`) no pasa por `t()`: es contenido largo por idioma, ya separado por carpeta de locale. No mezclar los dos sistemas.
+- Al agregar una key nueva, agregarla en **todos** los locales soportados en el mismo cambio (`messages/namespaces/common/en.json` y `.../es.json`) — nunca dejar un idioma sin la key aunque el default (`en`) la resuelva.
+- El contenido de proyectos (`content/projects/{en,es}/*`) no pasa por `t()`: es contenido largo por idioma, ya separado por carpeta de locale. No mezclar los dos sistemas.
 
 ## 8. Feature flags
 

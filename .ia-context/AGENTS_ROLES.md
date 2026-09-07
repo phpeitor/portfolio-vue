@@ -59,10 +59,10 @@ Documentos de referencia que cada rol usa:
 **Debe leer:** `FRONTEND_ARQUITECTURA.md` §11–12, `FRONTEND_STANDARDS.md` §7.
 
 **No debe hacer sin confirmar:**
-- Cambiar `projectIds` (afecta el tipo `ProjectId` en todo el sistema de tipos) sin actualizar `previews/{en,de}` y `projects/{en,de}/<slug>.ts` en el mismo cambio.
+- Cambiar `projectIds` (afecta el tipo `ProjectId` en todo el sistema de tipos) sin actualizar `previews/{en,es}` y `projects/{en,es}/<slug>.ts` en el mismo cambio.
 - Agregar un locale nuevo (implica tocar `LOCALES` en `i18n/constants` y duplicar todos los namespaces).
 
-**Checklist de salida:** slug consistente en `projectIds`, `previews/en.ts`, `previews/de.ts`, `projects/en/<slug>.ts`, `projects/de/<slug>.ts`; keys de `t()` presentes en `en.json` y `de.json`.
+**Checklist de salida:** slug consistente en `projectIds`, `previews/en.ts`, `previews/es.ts`, `projects/en/<slug>.ts`, `projects/es/<slug>.ts`; keys de `t()` presentes en `en.json` y `es.json`.
 
 ## 5. Audio Agent
 

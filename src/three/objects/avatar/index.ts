@@ -412,19 +412,20 @@ const updateContactLogo = () => {
   contactLogo.visible = showLogo;
   if (!showLogo) return;
 
+  // Anchored to the upper-spine bone instead of mesh's own Box3 (as it was
+  // originally, matching attachPhpLogo/updatePhpLogo's approach) — that box recomputes
+  // from the current pose every tick, and it turned out not to be as stable as it
+  // looked in a single static screenshot: it visibly drifted while scrolling within
+  // the contact section. A bone position doesn't have that problem (same reasoning
+  // that already applies to the glasses' headBone anchor).
+  const chestBone = mesh.getObjectByName("spine2Bone") as Bone | null;
+  if (!chestBone) return;
+
   transform.updateMatrixWorld(true);
   mesh.updateMatrixWorld(true);
 
-  const avatarBox = new Box3().setFromObject(mesh);
-  const avatarSize = new Vector3();
-  const logoPosition = new Vector3();
-  avatarBox.getSize(avatarSize);
-  avatarBox.getCenter(logoPosition);
-
-  logoPosition.y = avatarBox.max.y + avatarSize.y * 0.42;
-  logoPosition.z = avatarBox.max.z + avatarSize.z * 0.12;
-
-  contactLogo.position.copy(logoPosition);
+  chestBone.getWorldPosition(contactLogo.position);
+  contactLogo.position.z += 0.5;
 };
 
 const updatePhpLogo = () => {

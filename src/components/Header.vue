@@ -10,6 +10,7 @@ import { social } from "../content/social";
 import ButtonRound from "./ButtonRound.vue";
 import ArrowRight from "./icons/ArrowRight.vue";
 import SoundsToggle from "./SoundsToggle.vue";
+import LangSwitch from "./LangSwitch.vue";
 import { isFeatureEnabled } from "../utils/features";
 import { useRouter } from "../composables/useRouter";
 import { useFirstRoute } from "../composables/useFirstRoute";
@@ -96,6 +97,7 @@ const getInTouchClassNames = computed(() => {
       <Logo class="header-logo-image" />
     </div>
     <div class="header-right">
+      <LangSwitch class="header-lang-switch" />
       <Button
         renderAs="a"
         variant="accent"
