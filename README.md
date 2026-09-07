@@ -4,7 +4,7 @@
 [![forthebadge](https://forthebadge.com/badges/built-with-love.svg)](https://www.linkedin.com/in/drphp/)
 
 <a href="https://www.instagram.com/amvsoft.tech/">
-  <img src="https://assets.awwwards.com/awards/element/2022/04/62685b5d39137607918646.png" alt="Instagram" width="600">
+  <img src="https://assets.awwwards.com/awards/element/2022/04/62685b5d39137607918646.png" alt="Instagram" width="800">
 </a>
 
 Portfolio personal interactivo con secciones animadas, proyectos, audio, WebGL y escenas 3D. El sitio combina UI en Vue con una escena `three.js` que contiene habitación, avatar, laboratorio/contacto, modelos GLB, shaders GLSL, sonidos y transiciones controladas por scroll.
@@ -179,4 +179,3 @@ Para cambios visuales/WebGL, `npm run build` + revisar en navegador es obligator
 - Para assets GLB externos, preferir modelos `Y-up`, centrados en origen y con escala razonable — algunos exportadores/conversores automáticos (ej. herramientas de imagen a STL) generan geometría con ejes no estándar (`Z-up`) sin avisarlo; si un modelo se ve girado/aplastado sin razón aparente, sospechar del eje antes que de la matemática de transformación.
 - Si el GLB viene comprimido con meshopt, mantener `MeshoptDecoder` configurado.
 - El diseño visual de los modelos debe coincidir con el estilo cartoon/low-poly del portfolio.
-- **Deploy en `dev.metadatape.com` = `npm run build` en el servidor, sin paso adicional** (nginx sirve `dist/` como static root). No existe un comando `deploy` separado ni un CD automatizado — tratar cada `build` en el VPS como publicación inmediata a producción.
