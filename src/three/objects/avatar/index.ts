@@ -481,15 +481,26 @@ const attachPhpLogo = (): Vector3 | null => {
   const resource = resources.items["php-logo-model"];
   if (!resource) return null;
 
-  const frontLogo = new Group();
-  const logoScene = resource.scene.clone(true) as Group;
-  frontLogo.name = "php-logo-front";
-
   const avatarBox = new Box3().setFromObject(mesh);
   const avatarSize = new Vector3();
   avatarBox.getSize(avatarSize);
 
+  const frontLogo = new Group();
+  const logoScene = resource.scene.clone(true) as Group;
+  frontLogo.name = "php-logo-front";
+
+  // This particular GLB (an auto-generated "image to STL" export, per its own
+  // asset.generator metadata) doesn't follow glTF's Y-up convention: its raw vertex
+  // data runs the "php" wordmark's height along Z and its thin extrusion depth along
+  // Y — confirmed by inspecting the actual buffer, not just the (as it turns out,
+  // stale/wrong) min/max the file declares for those accessors. Loaded as-is it lies
+  // flat, thin-side up, instead of standing upright facing the camera. Rotating 90°
+  // around X swaps those two axes back to the expected "tall in Y, thin in Z".
+  // Doing this *before* measuring the box below matters — measuring first and
+  // rotating the group after fits the scale to the wrong (still-flat) footprint.
+  logoScene.rotation.x = Math.PI / 2;
   logoScene.updateMatrixWorld(true);
+
   const logoBox = new Box3().setFromObject(logoScene);
   const logoSize = new Vector3();
   const logoCenter = new Vector3();
@@ -498,13 +509,11 @@ const attachPhpLogo = (): Vector3 | null => {
   logoScene.position.sub(logoCenter);
   frontLogo.add(logoScene);
 
-  const chestWidth = avatarSize.x * 0.14;
-  const chestHeight = avatarSize.y * 0.10;
-  // Non-uniform: the logo's own aspect ratio doesn't match the chest target's, so a
-  // single Math.min-derived scale was bound by the tighter (height) constraint,
-  // leaving it visibly narrower than the available chest width instead of filling it.
-  const scaleX = (chestWidth / Math.max(logoSize.x, 0.0001)) * 1.35;
-  const scaleY = (chestHeight / Math.max(logoSize.y, 0.0001)) * 1.35;
+  // Uniform: a single scale factor keeps the model's own proportions intact, sized
+  // by whichever dimension (width or height) is tighter relative to the chest target.
+  const chestWidth = avatarSize.x * 0.22;
+  const chestHeight = avatarSize.y * 0.1;
+  const scale = Math.min(chestWidth / Math.max(logoSize.x, 0.0001), chestHeight / Math.max(logoSize.y, 0.0001)) * 0.55;
 
   const styleLogo = (object: Group) => {
     object.traverse((child) => {
@@ -526,9 +535,7 @@ const attachPhpLogo = (): Vector3 | null => {
 
   styleLogo(frontLogo);
 
-  frontLogo.scale.set(scaleX, scaleY, scaleY);
-
-  frontLogo.rotation.set(0, 0, 0);
+  frontLogo.scale.setScalar(scale);
 
   scene.instance.add(frontLogo);
   phpLogo = frontLogo;
@@ -536,6 +543,8 @@ const attachPhpLogo = (): Vector3 | null => {
   // Same "revealed by the hologram shader as the solid copy dissolves" double used
   // for the glasses above, built from a second clone of the same logo model.
   const hologramLogoScene = resource.scene.clone(true) as Group;
+  hologramLogoScene.rotation.x = Math.PI / 2;
+  hologramLogoScene.updateMatrixWorld(true);
   hologramLogoScene.position.sub(logoCenter);
   phpLogoHologramMaterial = createAccessoryHologramMaterial();
 
@@ -547,8 +556,7 @@ const attachPhpLogo = (): Vector3 | null => {
     child.frustumCulled = false;
     child.material = phpLogoHologramMaterial;
   });
-  frontLogoHologram.scale.set(scaleX, scaleY, scaleY);
-  frontLogoHologram.rotation.set(0, 0, 0);
+  frontLogoHologram.scale.setScalar(scale);
 
   scene.instance.add(frontLogoHologram);
   phpLogoHologram = frontLogoHologram;
@@ -669,6 +677,7 @@ const updatePhpLogo = () => {
   mesh.updateMatrixWorld(true);
 
   chestBone.getWorldPosition(phpLogo.position);
+  phpLogo.position.y -= 0.3;
   phpLogo.position.z += 0.5;
   phpLogoMaterial.opacity = getHologramAlpha(phpLogo.position.y);
 
