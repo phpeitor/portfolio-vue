@@ -19,7 +19,6 @@ import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.j
 import { face } from "./face";
 import { leftDesktop as avatarLeftDesktop } from "./left-desktop";
 import { createGlasses } from "./glasses";
-import { createMouth } from "./mouth";
 import { createAccessoryHologramMaterial } from "./accessory-hologram-material";
 import { createSiteLogo } from "./site-logo";
 import matcapVertexShader from "../../shaders/avatar-matcap/vertex.glsl";
@@ -39,10 +38,6 @@ let glasses: Group | null = null;
 let glassesMaterial: MeshMatcapMaterial | null = null;
 let glassesHologram: Group | null = null;
 let glassesHologramMaterial: ShaderMaterial | null = null;
-let mouth: Group | null = null;
-let mouthMaterial: MeshMatcapMaterial | null = null;
-let mouthHologram: Group | null = null;
-let mouthHologramMaterial: ShaderMaterial | null = null;
 let phpLogoHologram: Group | null = null;
 let phpLogoHologramMaterial: ShaderMaterial | null = null;
 let contactLogo: Group | null = null;
@@ -86,7 +81,7 @@ const getHologramAlpha = (worldY: number) => {
 // the old way while the actual head has turned — the accessory drifts off the face.
 // Parenting onto headBone with a local-space offset computed once, by contrast,
 // tracks the bone rigidly forever after, the same way the skinned face/eyes do.
-// Face accessories (glasses/mouth) need an offset scaled to the HEAD, not the
+// Face accessories (glasses) need an offset scaled to the HEAD, not the
 // whole body — using avatarSize (the full-body Box3 already computed for the chest
 // logos) put them roughly 3 head-heights away from headBone's origin. That was hard
 // to notice in the About pose specifically because headBone's rotation there is very
@@ -213,7 +208,6 @@ const setupMesh = () => {
 
   if (avatarSize) {
     attachGlasses(avatarSize);
-    attachMouth(avatarSize);
     attachContactLogo(avatarSize);
   }
 
@@ -301,33 +295,6 @@ const updateGlasses = () => {
   }
 };
 
-const attachMouth = (avatarSize: Vector3) => {
-  if (!mesh || mouth) return;
-
-  const headBone = mesh.getObjectByName("headBone") as Bone | null;
-  if (!headBone) return;
-
-  const matcapTexture = resources.items["matcap-black"];
-  matcapTexture.colorSpace = LinearSRGBColorSpace;
-  matcapTexture.generateMipmaps = false;
-  // A muted brownish-red ("lips") for a distinct facial feature.
-  const material = new MeshMatcapMaterial({ matcap: matcapTexture, color: 0x6b3535 });
-  material.transparent = true;
-  // See attachGlasses — drawn as a "decal" on top of the head regardless of depth.
-  material.depthTest = false;
-  material.depthWrite = false;
-
-  mouth = createMouth(avatarSize, material);
-  mouthMaterial = material;
-  // Same headBone-local parenting as the glasses — position set later, see
-  // positionFaceAccessories.
-  headBone.add(mouth);
-
-  mouthHologramMaterial = createAccessoryHologramMaterial();
-  mouthHologram = createMouth(avatarSize, mouthHologramMaterial);
-  headBone.add(mouthHologram);
-};
-
 // A throwaway clone of the rig, posed to frame 0 of the "idle" clip and never added
 // to any scene — used only to compute a deterministic reference pose for
 // positionFaceAccessories below. See its comment for why this exists: measuring off
@@ -356,16 +323,15 @@ const buildCalibrationHead = (): { headBone: Bone; mesh: Object3D } | null => {
 
 let faceAccessoriesPositioned = false;
 
-// glasses/mouth are parented onto headBone in attachGlasses/attachMouth (during
-// setupMesh), but their local offset is computed here instead — against
-// buildCalibrationHead's isolated, deterministic pose rather than the live
-// mesh/mixer, and so no longer timing-dependent at all. A *local* offset, once
-// computed, is valid regardless of which posed instance of the rig it's measured
-// against (that's the whole point of local space) — so calibrating against a
-// throwaway clone and applying the result to the live headBone is exactly correct,
-// not an approximation.
+// glasses are parented onto headBone in attachGlasses (during setupMesh), but its
+// local offset is computed here instead — against buildCalibrationHead's isolated,
+// deterministic pose rather than the live mesh/mixer, and so no longer
+// timing-dependent at all. A *local* offset, once computed, is valid regardless of
+// which posed instance of the rig it's measured against (that's the whole point of
+// local space) — so calibrating against a throwaway clone and applying the result
+// to the live headBone is exactly correct, not an approximation.
 const positionFaceAccessories = () => {
-  if (faceAccessoriesPositioned || !glasses || !mouth) return;
+  if (faceAccessoriesPositioned || !glasses) return;
 
   const calibration = buildCalibrationHead();
   if (!calibration) return;
@@ -381,32 +347,6 @@ const positionFaceAccessories = () => {
     worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.2, headSize.z * 0.3)),
   );
   glassesHologram?.position.copy(glasses.position);
-
-  mouth.position.copy(
-    worldOffsetToLocalPosition(calibration.headBone, new Vector3(0, headSize.y * 0.05, headSize.z * 0.27)),
-  );
-  mouthHologram?.position.copy(mouth.position);
-};
-
-const updateMouth = () => {
-  if (!mouth) return;
-
-  // About only — the Contact face texture (sleeping/proud frames) already draws its
-  // own mouth, so this accessory would just duplicate/overlap it there.
-  const shouldShow = sceneWeights.about > 0.15;
-  mouth.visible = shouldShow;
-  if (mouthHologram) mouthHologram.visible = shouldShow;
-  if (!shouldShow) return;
-
-  if (mouthMaterial) {
-    mouth.getWorldPosition(worldPositionScratch);
-    mouthMaterial.opacity = getHologramAlpha(worldPositionScratch.y);
-  }
-
-  if (mouthHologramMaterial) {
-    mouthHologramMaterial.uniforms.uProgress!.value = uniforms.uProgress.value;
-    mouthHologramMaterial.uniforms.uTime!.value = gsap.ticker.time;
-  }
 };
 
 const attachPhpLogo = (): Vector3 | null => {
@@ -512,7 +452,6 @@ const tick = () => {
     transform.visible = true;
     updatePhpLogo();
     updateGlasses();
-    updateMouth();
     updateContactLogo();
     return;
   }
@@ -521,7 +460,6 @@ const tick = () => {
   transform.rotation.copy(waypointsRotation);
   updatePhpLogo();
   updateGlasses();
-  updateMouth();
   updateContactLogo();
 
   //uniforms.uProgress.value = sceneWeightsInOut.about.in * 1.1 - 0.1;
@@ -631,8 +569,6 @@ const destroy = () => {
   phpLogoHologram = null;
   glasses = null;
   glassesHologram = null;
-  mouth = null;
-  mouthHologram = null;
   contactLogo = null;
 };
 
