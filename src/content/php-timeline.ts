@@ -1,5 +1,5 @@
-// The "My journey with PHP" timeline (features/home/components/PhpTimeline.vue): one
-// stop per PHP release from 5.4 (where it all started, at university) to 8.5. Each
+// The "My journey with PHP" timeline (features/home/components/PhpTimeline.vue): the
+// key PHP releases from 5.4 (where it all started, at university) to 8.5. Each
 // stop has its headline features, what I was doing in that era, and a short snippet
 // in that version's style. `hl` marks the snippet lines that show the new syntax.
 // Keep code lines under ~46 characters (the code window's width on a laptop).
@@ -50,29 +50,6 @@ while ($fila = mysql_fetch_assoc($res)) {
 
 $roles = ['admin', 'editor']; // 5.4: []`,
     hl: [8],
-  },
-  {
-    version: "5.5",
-    year: 2013,
-    era: "pure",
-    features: ["yield", "finally", "password_hash()"],
-    story: {
-      es: "Dejé md5() por password_hash() y mysql_* por PDO con consultas preparadas. Mis primeras funciones reutilizables, todavía con require a mano.",
-      en: "I swapped md5() for password_hash() and mysql_* for PDO with prepared statements. My first reusable functions, still wired up with manual requires.",
-    },
-    file: "auth.php",
-    code: `<?php
-require 'db.php';
-
-$hash = password_hash($clave, PASSWORD_DEFAULT);
-
-$stmt = $pdo->prepare('SELECT * FROM logs');
-$stmt->execute();
-
-function filas($stmt) {
-    while ($f = $stmt->fetch()) yield $f;
-}`,
-    hl: [3, 8, 9, 10],
   },
   {
     version: "5.6",
@@ -128,8 +105,8 @@ usort($ventas, function ($a, $b) {
     era: "cms",
     features: ["?nullable", "void", "[$a, $b] ="],
     story: {
-      es: "Etapa CMS: sitios para clientes con WordPress, creando temas y plugins a medida con hooks, custom post types y shortcodes.",
-      en: "The CMS era: client sites on WordPress, building custom themes and plugins with hooks, custom post types and shortcodes.",
+      es: "Etapa CMS: sitios para clientes con WordPress (temas y plugins a medida) y Joomla (componentes y módulos propios). Ahí entendí cómo se organiza un sistema grande.",
+      en: "The CMS era: client sites on WordPress (custom themes and plugins) and Joomla (my own components and modules). That's where I learned how a large system is organised.",
     },
     file: "mi-plugin.php",
     code: `<?php
@@ -146,76 +123,30 @@ function autor(?int $id): ?string { /* ... */ }`,
     hl: [3, 10],
   },
   {
-    version: "7.2",
-    year: 2017,
-    era: "cms",
-    features: ["object type", "Argon2", "sodium"],
-    story: {
-      es: "También Joomla: componentes y módulos propios con su MVC. Ahí entendí cómo se organiza un sistema grande por capas.",
-      en: "Joomla too: my own components and modules with its MVC. That's where I understood how a large system is organised in layers.",
-    },
-    file: "com_proyectos/model.php",
-    code: `<?php
-defined('_JEXEC') or die;
-
-class ProyectosModelLista extends JModelList
-{
-    protected function getListQuery()
-    {
-        return $this->getDbo()->getQuery(true)
-            ->select('*')->from('#__proyectos');
-    }
-}
-function guardar(object $datos): void {}`,
-    hl: [11],
-  },
-  {
-    version: "7.3",
-    year: 2018,
-    era: "laravel",
-    features: ["flexible heredoc", "array_key_first()"],
-    story: {
-      es: "Llegó Laravel: Eloquent, migraciones, Blade, colas y Artisan. Pasé de armar piezas sueltas a construir productos completos, rápido y ordenado.",
-      en: "Laravel arrived: Eloquent, migrations, Blade, queues and Artisan. I went from wiring loose pieces to shipping complete products, fast and clean.",
-    },
-    file: "OrderController.php",
-    code: `<?php
-namespace App\\Http\\Controllers;
-
-use App\\Order;
-
-class OrderController extends Controller
-{
-    public function index()
-    {
-        return Order::where('status', 'paid')
-            ->latest()->paginate(20);
-    }
-}`,
-    hl: [8, 9],
-  },
-  {
     version: "7.4",
     year: 2019,
     era: "laravel",
     features: ["fn() =>", "typed properties", "??="],
     story: {
-      es: "APIs REST con Laravel, jobs en cola y tests. Las arrow functions y las propiedades tipadas hicieron el código más corto y seguro.",
-      en: "REST APIs with Laravel, queued jobs and tests. Arrow functions and typed properties made the code shorter and safer.",
+      es: "Llegó Laravel: Eloquent, migraciones, Blade, colas y Artisan. Pasé de armar piezas sueltas a construir productos completos, y con fn() y propiedades tipadas el código quedó más corto y seguro.",
+      en: "Laravel arrived: Eloquent, migrations, Blade, queues and Artisan. I went from wiring loose pieces to shipping complete products, and fn() and typed properties made the code shorter and safer.",
     },
-    file: "OrderService.php",
+    file: "OrderController.php",
     code: `<?php
-class OrderService
-{
-    private int $taxRate = 18;
-    private ?string $note = null;
+namespace App\\Http\\Controllers;
 
-    public function totals(array $orders): array
+class OrderController extends Controller
+{
+    private int $perPage = 20;
+
+    public function index()
     {
-        return array_map(fn($o) => $o->total, $orders);
+        return Order::where('status', 'paid')
+            ->paginate($this->perPage)
+            ->through(fn($o) => $o->only('id', 'total'));
     }
 }`,
-    hl: [3, 4, 8],
+    hl: [5, 9, 11],
   },
   {
     version: "8.0",
@@ -313,29 +244,6 @@ class ProPlan extends Plan
 }
 if (json_validate($payload)) { /* ... */ }`,
     hl: [3, 8, 11],
-  },
-  {
-    version: "8.4",
-    year: 2024,
-    era: "today",
-    features: ["property hooks", "private(set)", "array_find()"],
-    story: {
-      es: "Property hooks y visibilidad asimétrica: adiós a decenas de getters y setters. Empecé a servir apps con FrankenPHP en modo worker.",
-      en: "Property hooks and asymmetric visibility: goodbye to dozens of getters and setters. I started serving apps with FrankenPHP in worker mode.",
-    },
-    file: "User.php",
-    code: `<?php
-class User
-{
-    public private(set) int $id;
-
-    public string $email {
-        set => strtolower($value);
-    }
-}
-
-$admin = array_find($users, fn($u) => $u->isAdmin);`,
-    hl: [3, 5, 6, 7, 10],
   },
   {
     version: "8.5",
