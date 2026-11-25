@@ -13,6 +13,10 @@ export type CodeSnippet = {
   prefill: number;
   command: string;
   output: TerminalLine[];
+  // Optional: once the file is typed, the developer asks Claude this (a Claude card
+  // pops up over the editor, the prompt is typed and Claude "thinks") before the
+  // command runs. Keep it under ~40 characters.
+  claudePrompt?: string;
 };
 
 export const codeSnippets: CodeSnippet[] = [
@@ -41,6 +45,7 @@ class OrderController extends Controller
 }`,
     prefill: 9,
     command: "php artisan test --filter=OrderTest",
+    claudePrompt: "add a test for OrderController@store",
     output: [
       { text: "PASS  Tests\\Feature\\OrderTest", tone: "ok" },
       { text: "✓ it stores a new order                  0.08s", tone: "muted" },
@@ -70,6 +75,7 @@ return new class extends Migration
 };`,
     prefill: 7,
     command: "php artisan migrate",
+    claudePrompt: "check the invoices migration",
     output: [
       { text: "INFO  Running migrations.", tone: "info" },
       { text: "create_invoices_table .............. 14ms DONE", tone: "muted" },
@@ -100,6 +106,7 @@ class InvoiceService
 }`,
     prefill: 9,
     command: "php artisan test",
+    claudePrompt: "review InvoiceService for edge cases",
     output: [
       { text: "PASS  Tests\\Unit\\InvoiceServiceTest", tone: "ok" },
       { text: "✓ it sums the order items               0.02s", tone: "muted" },
