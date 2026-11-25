@@ -32,5 +32,11 @@
   "menu": "Menú",
   "email": "Correo",
   "switch-to": "Cambiar a",
-  "whatsapp-message": "¡Hola Alejandro! Vi tu portafolio y me gustaría conversar contigo."
+  "whatsapp-message": "¡Hola Alejandro! Vi tu portafolio y me gustaría conversar contigo.",
+  "php-journey": "Mi camino con PHP",
+  "php-journey-banner": "5.4 → 8.5",
+  "php-journey-lead": "Empecé en la universidad con PHP 5.4, sin Composer ni framework. Haz scroll y recorre conmigo cada versión hasta PHP 8.5.",
+  "php-journey-new": "Lo nuevo",
+  "php-journey-scroll": "Haz scroll para avanzar",
+  "php-journey-go-to": "Ir a PHP {version}"
 }
