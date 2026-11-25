@@ -2,6 +2,7 @@ import { CanvasTexture, LinearSRGBColorSpace } from "three";
 import gsap from "gsap";
 import { codeSnippets, type CodeSnippet, type TerminalLine } from "../../../content/code-snippets";
 import { playSound } from "../../../features/sounds/utils/sounds";
+import { drawClaudeSpark } from "./book-logos";
 
 // A live code editor drawn on a canvas and used as the right monitor's texture: the
 // developer types real Laravel code with a human rhythm (bursts, pauses at line ends,
@@ -42,7 +43,12 @@ const C = {
   muted: "#7f848e",
   prompt: "#98c379",
   path: "#56b6c2",
+  claude: "#d97757", // Claude's terracotta
+  claudeCard: "#1f1e1d",
 };
+
+// How long Claude "thinks" after the prompt is typed, before the command runs.
+const CLAUDE_THINK_SECONDS = 3.2;
 
 type Token = { text: string; color: string };
 
@@ -105,6 +111,8 @@ export const createCodeEditor = (snippets: CodeSnippet[], options: CodeEditorOpt
   let phase: Phase = "typing";
   let commandTyped = 0;
   let outputShown = 0;
+  let promptTyped = 0; // characters of the snippet's Claude prompt typed so far
+  let thinkStart = 0; // performance.now() when Claude started thinking (0 = not yet)
   let scrollRow = 0;
   let cursorOn = true;
   let lastKeySound = 0;
@@ -125,6 +133,8 @@ export const createCodeEditor = (snippets: CodeSnippet[], options: CodeEditorOpt
     phase = "typing";
     commandTyped = 0;
     outputShown = 0;
+    promptTyped = 0;
+    thinkStart = 0;
     scrollRow = 0;
   };
 
@@ -272,6 +282,75 @@ export const createCodeEditor = (snippets: CodeSnippet[], options: CodeEditorOpt
     }
   };
 
+  // The Claude card: floats over the bottom right of the code while the developer
+  // asks Claude about the file — the spark, the prompt being typed, then the spark
+  // spinning and pulsing next to "Thinking…" with a seconds counter, Claude Code style.
+  const drawClaudeCard = () => {
+    const prompt = snippet().claudePrompt;
+    if (!ctx || !prompt || phase !== "thinking") return;
+    const cardW = 640;
+    const cardH = 146;
+    const x = WIDTH - cardW - 24;
+    const y = CODE_BOTTOM - cardH - 12;
+
+    ctx.save();
+    ctx.shadowColor = "rgba(0, 0, 0, 0.45)";
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = C.claudeCard;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 14);
+    ctx.fill();
+    ctx.restore();
+    ctx.strokeStyle = C.claude;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x + 1, y + 1, cardW - 2, cardH - 2, 13);
+    ctx.stroke();
+
+    // Header: the spark and the name.
+    drawClaudeSpark(ctx, x + 36, y + 32, 30, C.claude);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.font = `700 22px ${FONT_FAMILY}`;
+    ctx.fillStyle = "#f4efe6";
+    ctx.fillText("Claude", x + 62, y + 32);
+    ctx.font = `400 17px ${FONT_FAMILY}`;
+    ctx.fillStyle = C.muted;
+    ctx.fillText(snippet().file, x + 62 + ctx.measureText("Claude").width + 52, y + 32);
+
+    // The prompt, typed in.
+    ctx.font = `400 21px ${FONT_FAMILY}`;
+    ctx.fillStyle = C.claude;
+    ctx.fillText(">", x + 22, y + 76);
+    const text = prompt.slice(0, promptTyped);
+    ctx.fillStyle = "#e6e6e6";
+    ctx.fillText(text, x + 48, y + 76);
+    if (!thinkStart && cursorOn) {
+      ctx.fillStyle = "#e6e6e6";
+      ctx.fillRect(x + 50 + ctx.measureText(text).width, y + 65, 11, 22);
+    }
+
+    // Thinking: spinning, pulsing spark + "Thinking…" + elapsed seconds.
+    if (thinkStart) {
+      const t = (performance.now() - thinkStart) / 1000;
+      const cx = x + 34;
+      const cy = y + 116;
+      const pulse = 1 + 0.18 * Math.sin(t * 6);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(t * 2.4);
+      drawClaudeSpark(ctx, 0, 0, 26 * pulse, C.claude);
+      ctx.restore();
+      const dots = ".".repeat(1 + (Math.floor(t * 3) % 3));
+      ctx.font = `italic 400 20px ${FONT_FAMILY}`;
+      ctx.fillStyle = C.claude;
+      ctx.fillText(`Thinking${dots}`, x + 58, cy);
+      ctx.font = `400 17px ${FONT_FAMILY}`;
+      ctx.fillStyle = C.muted;
+      ctx.fillText(`(${Math.floor(t)}s · esc to interrupt)`, x + 58 + 170, cy);
+    }
+  };
+
   const draw = () => {
     if (!ctx || !texture) return;
     ctx.fillStyle = C.bg;
@@ -279,6 +358,7 @@ export const createCodeEditor = (snippets: CodeSnippet[], options: CodeEditorOpt
     drawTabBar();
     drawCode();
     drawTerminal();
+    drawClaudeCard();
     texture.needsUpdate = true;
   };
 
@@ -349,7 +429,27 @@ export const createCodeEditor = (snippets: CodeSnippet[], options: CodeEditorOpt
     }
 
     if (phase === "thinking") {
+      const prompt = snippet().claudePrompt;
+      if (prompt && promptTyped < prompt.length) {
+        promptTyped++;
+        keySound();
+        draw();
+        schedule(0.045 + Math.random() * 0.05);
+        return;
+      }
+      if (prompt && !thinkStart) {
+        thinkStart = performance.now();
+        draw();
+        schedule(1 / 15);
+        return;
+      }
+      if (prompt && (performance.now() - thinkStart) / 1000 < CLAUDE_THINK_SECONDS) {
+        draw(); // animate the spark (~15 fps)
+        schedule(1 / 15);
+        return;
+      }
       phase = "command";
+      draw();
       schedule(0.1);
       return;
     }

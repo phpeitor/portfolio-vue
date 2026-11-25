@@ -45,12 +45,12 @@ const init = (parent: Group, shelf: Object3D) => {
   // so it stands out from the orange cover instead of blending in.
   const cover = makeDecal(ORANGE_COVER.width, ORANGE_COVER.height, 800, (ctx, w, h) => {
     drawPlate(ctx, w * 0.06, h * 0.08, w * 0.88, h * 0.84, w * 0.08, "#f4efe6");
-    drawClaudeSpark(ctx, w / 2, h * 0.4, w * 0.25, "#d97757");
+    drawClaudeSpark(ctx, w / 2, h * 0.38, w * 0.62, "#d97757");
     ctx.fillStyle = "#1f1e1d";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = FONT.replace("{size}", String(Math.round(w * 0.19)));
-    ctx.fillText("Claude", w / 2, h * 0.76);
+    ctx.font = FONT.replace("{size}", String(Math.round(w * 0.23)));
+    ctx.fillText("Claude", w / 2, h * 0.77);
   });
   cover.position.set(ORANGE_COVER.x, ORANGE_COVER.y, ORANGE_COVER.z);
   cover.rotation.y = Math.PI; // faces -Z, like the cover
@@ -60,14 +60,14 @@ const init = (parent: Group, shelf: Object3D) => {
   const spine = makeDecal(GREY_SPINE.width, GREY_SPINE.height, 1000, (ctx, w, h) => {
     drawPlate(ctx, w * 0.04, h * 0.03, w * 0.92, h * 0.94, w * 0.12, "#17171c");
     const white = "#f7f7f8";
-    drawOpenAIBlossom(ctx, w / 2, w * 0.68, w * 0.34, white);
+    drawOpenAIBlossom(ctx, w / 2, w * 0.62, w * 0.7, white);
     ctx.save();
-    ctx.translate(w / 2, h * 0.62);
+    ctx.translate(w / 2, h * 0.6);
     ctx.rotate(Math.PI / 2); // reads top to bottom, like a real spine
     ctx.fillStyle = white;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = FONT.replace("{size}", String(Math.round(w * 0.42)));
+    ctx.font = FONT.replace("{size}", String(Math.round(w * 0.5)));
     ctx.fillText("OpenAI", 0, 0);
     ctx.restore();
   });
