@@ -58,13 +58,20 @@ const bands = computed(() => {
     if (last && last.era === s.era) last.to = i;
     else list.push({ era: s.era, from: i, to: i });
   });
-  return list.map((b) => ({
-    ...b,
-    label: eras[b.era].label[lang.value],
-    color: eras[b.era].color,
-    left: b.from * spacing.value - spacing.value * 0.42,
-    width: (b.to - b.from) * spacing.value + spacing.value * 0.84,
-  }));
+  // Each band reaches 42% of the way to its neighbours, but never past the track's
+  // edges (the first and last bands would otherwise be cut off on wide screens).
+  const reach = spacing.value * 0.42;
+  return list.map((b) => {
+    const left = Math.max(-RAIL_PAD + 4, b.from * spacing.value - reach);
+    const right = Math.min(railWidth.value + RAIL_PAD - 4, b.to * spacing.value + reach);
+    return {
+      ...b,
+      label: eras[b.era].label[lang.value],
+      color: eras[b.era].color,
+      left,
+      width: right - left,
+    };
+  });
 });
 
 const era = computed(() => eras[stop.value.era]);
@@ -217,7 +224,7 @@ onUnmounted(() => {
             <div class="php-timeline-card-features">
               <span class="php-timeline-card-features-title">{{ t("php-journey-new") }}</span>
               <ul>
-                <li v-for="f in stop.features" :key="f">{{ f }}</li>
+                <li v-for="(f, i) in stop.features" :key="f" :style="{ '--i': i }">{{ f }}</li>
               </ul>
             </div>
           </article>
@@ -486,7 +493,7 @@ onUnmounted(() => {
 
     @include mixins.mq("lg") {
       grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
-      grid-template-rows: auto;
+      grid-template-rows: minmax(0, 1fr);
       align-items: start;
       gap: var(--space-xl);
     }
@@ -579,11 +586,14 @@ onUnmounted(() => {
       }
     }
 
+    // "What's new": the version's headline features as dark code chips (same look as
+    // the code window), each with a diff-style green "+", popping in one by one.
     &-features {
       display: none;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 10px;
+      margin-top: 6px;
 
       @include mixins.mq("md") {
         display: flex;
@@ -591,29 +601,44 @@ onUnmounted(() => {
 
       &-title {
         font-family: var(--font-mono);
-        font-size: 11px;
-        letter-spacing: 0.08em;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
         text-transform: uppercase;
-        color: var(--color-text-300);
+        color: var(--color-text-400);
       }
 
       ul {
         display: flex;
         flex-wrap: wrap;
-        gap: 6px;
+        gap: 8px;
         list-style: none;
         margin: 0;
         padding: 0;
       }
 
       li {
-        padding: 3px 9px;
-        border-radius: 8px;
-        background: color-mix(in srgb, var(--php) 18%, transparent);
-        color: var(--php-dark);
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 7px 13px;
+        border-radius: 10px;
+        background: var(--code-bg);
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        box-shadow: 0 6px 16px rgba(45, 42, 36, 0.16);
+        color: #e6e6e6;
         font-family: var(--font-mono);
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 600;
+        white-space: nowrap;
+        animation: tl-chip-in 0.36s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+        animation-delay: calc(0.12s + var(--i) * 60ms);
+
+        &::before {
+          content: "+";
+          color: #98c379;
+          font-weight: 700;
+        }
       }
     }
   }
@@ -622,6 +647,7 @@ onUnmounted(() => {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    max-height: 100%;
     border-radius: var(--radius-lg);
     background: var(--code-bg);
     box-shadow: 0 18px 40px rgba(45, 42, 36, 0.22);
@@ -729,6 +755,95 @@ onUnmounted(() => {
   }
 }
 
+// Short desktop screens (laptops with browser and task bars, Windows display scaling):
+// keep the text at full size and win the height back from spacing instead — less top
+// padding, no lead paragraph or watermark, a shorter track, a smaller version number
+// and denser code — so the "What's new" chips at the bottom of the card always show.
+@media (min-width: 840px) and (max-height: 820px) {
+  .php-timeline {
+    &-sticky {
+      padding-top: 86px;
+      padding-bottom: 12px;
+      gap: 10px;
+    }
+
+    &-lead {
+      display: none;
+    }
+
+    &-title {
+      padding-top: 30px;
+    }
+
+    &-title-copy {
+      font-size: var(--font-size-title-md);
+    }
+
+    &-track {
+      height: 150px;
+    }
+
+    &-elephpant {
+      bottom: 68px;
+      width: 112px;
+      height: 92px;
+    }
+
+    &-card {
+      gap: 10px;
+
+      &-watermark {
+        display: none;
+      }
+
+      &-version strong {
+        font-size: 52px;
+      }
+
+      &-story {
+        font-size: 16px;
+      }
+
+      &-features {
+        margin-top: 0;
+      }
+    }
+
+    &-code-pre {
+      font-size: 12.5px;
+      line-height: 1.45;
+      padding: 10px 0;
+    }
+  }
+}
+
+@media (min-width: 840px) and (max-height: 680px) {
+  .php-timeline {
+    &-sticky {
+      padding-top: 80px;
+    }
+
+    &-track {
+      height: 136px;
+    }
+
+    &-elephpant {
+      bottom: 68px;
+      width: 100px;
+      height: 82px;
+    }
+
+    &-card-version strong {
+      font-size: 44px;
+    }
+
+    &-code-pre {
+      font-size: 11.5px;
+      line-height: 1.4;
+    }
+  }
+}
+
 // Syntax colours (One Dark, like the monitor in the room).
 .php-timeline-code-pre :deep(.tk-c) {
   color: #7f848e;
@@ -755,6 +870,17 @@ onUnmounted(() => {
 .php-timeline-code-pre :deep(.tk-o) {
   color: #56b6c2;
   font-weight: 700;
+}
+
+@keyframes tl-chip-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @keyframes tl-line-in {
@@ -793,7 +919,8 @@ onUnmounted(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .php-timeline-code-line {
+  .php-timeline-code-line,
+  .php-timeline-card-features li {
     animation: none;
   }
 
